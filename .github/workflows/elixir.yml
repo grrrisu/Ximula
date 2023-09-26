@@ -39,3 +39,5 @@ jobs:
       run: mix test
     - name: Check Formatting
       run: mix format --check-formatted
+    - name: Check Credo Warnings
+      run: mix credo suggest --min-priority high
