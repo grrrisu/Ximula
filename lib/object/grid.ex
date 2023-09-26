@@ -1,4 +1,8 @@
 defmodule Ximula.Grid do
+  @moduledoc """
+  2 dimensional grid with boundary check
+  """
+
   alias Ximula.Grid
 
   def create(width, height, default \\ nil)
