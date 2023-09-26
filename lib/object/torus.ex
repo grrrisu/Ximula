@@ -1,4 +1,7 @@
 defmodule Ximula.Torus do
+  @moduledoc """
+  2 dimensional torus: exiting on the left side will enter on the right side, exiting on top will enter on the bottom and vice versa.
+  """
   alias Ximula.Grid
 
   defdelegate create(width, height, value \\ nil), to: Grid
