@@ -89,6 +89,7 @@ defmodule Ximula.Grid do
       Enum.filter(col, fn {y, value} ->
         func.(x, y, value)
       end)
+      |> Enum.map(&(&1 |> Tuple.to_list() |> List.last()))
     end)
     |> List.flatten()
   end
