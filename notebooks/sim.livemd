@@ -1,0 +1,425 @@
+# Sim
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.10.0", only: [:dev]},
+  {:ximula, path: Path.join(__DIR__, ".."), env: :dev}
+])
+```
+
+## Structs
+
+```elixir
+defmodule Sim.Entity do
+  # %Sim.Vegetation{size: 5, capacity: 50, ...}
+  defstruct id: nil, type: Sim.Entity, value: 0
+end
+
+defmodule Sim.Field do
+  defstruct position: nil,
+            priority: :normal,
+            vegetation: [],
+            herbivores: [],
+            predators: [],
+            factories: [],
+            buildings: [],
+            transports: [],
+            pawns: []
+end
+```
+
+## Data
+
+```elixir
+defmodule Sim.Data do
+  use Agent
+
+  alias Ximula.Torus
+  alias Sim.Field
+
+  def start_link(size) do
+    Agent.start_link(fn ->
+      Torus.create(size, size, fn x, y ->
+        %Field{
+          position: {x, y},
+          vegetation: %Sim.Entity{type: Sim.Vegetation}
+        }
+      end)
+    end)
+  end
+
+  def all(pid) do
+    Agent.get(pid, & &1)
+  end
+
+  def get_field(x, y, pid) do
+    Agent.get(pid, fn map -> Torus.get(map, x, y) end)
+  end
+
+  def get_all_fields(pid) do
+    Agent.get(pid, fn grid ->
+      Enum.map(grid, fn {_x, col} ->
+        Enum.map(col, fn {_y, value} ->
+          value
+        end)
+      end)
+      |> List.flatten()
+    end)
+  end
+
+  def set_fields(fields, pid) do
+    Agent.update(pid, fn grid ->
+      Enum.reduce(fields, grid, fn field, acc ->
+        {x, y} = field.position
+        Torus.put(acc, x, y, field)
+      end)
+    end)
+  end
+end
+```
+
+```elixir
+{:ok, map_pid} = Sim.Data.start_link(50)
+proxy = Sim.AccessProxy.start_link(agent: map_pid, name: :sim_data)
+Sim.AccessProxy.get(:sim_data)
+```
+
+## Simulations
+
+```elixir
+defmodule Sim.Vegetation do
+  def sim(field) do
+    # Process.sleep(5)
+    if field.position == {13, 13}, do: raise("Sim Error")
+    put_in(field.vegetation.value, 1)
+  end
+end
+
+defmodule Sim.Herbivore do
+  def sim(field) do
+    # Process.sleep(5)
+    field
+  end
+end
+
+defmodule Sim.Predator do
+  def sim(_field) do
+    :no_change
+  end
+end
+
+defmodule Sim.Factory do
+  def sim(_field) do
+    :no_change
+  end
+end
+
+defmodule Sim.Transport do
+  def sim(_field) do
+    :no_change
+  end
+end
+```
+
+## Simulator
+
+```elixir
+defmodule Simulator do
+  def start_supervisor() do
+    Task.Supervisor.start_link(name: Simulator.Task.Supervisor)
+  end
+
+  def sim(entities, simulation, id_func \\ & &1) do
+    sim_entities(entities, simulation)
+    |> Stream.zip(Enum.map(entities, id_func))
+    |> Stream.reject(&not_changed(&1))
+    |> Enum.reduce(%{ok: [], exit: []}, &group_by_state/2)
+  end
+
+  def benchmark(func) do
+    before = Time.utc_now()
+    result = func.()
+    time_diff = Time.diff(Time.utc_now(), before, :microsecond)
+    {time_diff, result}
+  end
+
+  defp sim_entities(entities, {module, func, args}) do
+    Task.Supervisor.async_stream_nolink(Simulator.Task.Supervisor, entities, module, func, args)
+  end
+
+  defp group_by_state({{state, result}, id}, %{ok: ok, exit: failed}) do
+    case state do
+      :ok -> %{ok: [result | ok], exit: failed}
+      :exit -> %{ok: ok, exit: [{id, result} | failed]}
+    end
+  end
+
+  defp not_changed({{:ok, :no_change}, _id}), do: true
+  defp not_changed(_), do: false
+end
+```
+
+```elixir
+defmodule Sim.Queue do
+  defstruct name: nil,
+            func: nil,
+            interval: 1_000,
+            timer: nil,
+            task: nil
+end
+```
+
+```elixir
+defmodule FieldSimulator do
+  @simulations [
+    Sim.Vegetation,
+    Sim.Herbivore,
+    Sim.Factory,
+    Sim.Predator,
+    Sim.Transport
+  ]
+
+  def sim(%Sim.Queue{} = queue, opts) do
+    Enum.map(@simulations, &sim_simulation(queue, &1, opts))
+    |> aggregate_results(queue.name)
+    |> notify_sum()
+  end
+
+  def sim_simulation(queue, simulation, opts) do
+    Simulator.benchmark(fn ->
+      get_data(opts[:proxy], queue.name)
+      |> Simulator.sim({simulation, :sim, []}, & &1.position)
+      |> handle_success(opts[:proxy])
+      |> handle_failed(opts[:proxy])
+      |> summarize(simulation)
+      |> notify()
+    end)
+  end
+
+  def get_data(proxy, name) do
+    Sim.AccessProxy.exclusive_get(proxy, fn grid ->
+      Sim.Grid.filter(grid, fn _x, _y, field ->
+        field.priority == name
+      end)
+    end)
+  end
+
+  def set_data(proxy, data) do
+    Sim.AccessProxy.update(proxy, fn grid ->
+      Enum.reduce(data, grid, fn field, acc ->
+        {x, y} = field.position
+        Sim.Torus.put(acc, x, y, field)
+      end)
+    end)
+  end
+
+  def handle_success(%{ok: fields} = results, proxy) do
+    :ok = set_data(proxy, fields)
+    results
+  end
+
+  def handle_failed(%{exit: failed} = results, _proxy) do
+    Enum.each(failed, fn reason ->
+      IO.puts("failed simulations: #{Exception.format_exit(reason)}")
+    end)
+
+    results
+  end
+
+  def summarize(%{ok: success, exit: failed}, simulation) do
+    %{
+      simulation: simulation,
+      ok: Enum.map(success, & &1.position),
+      error:
+        Enum.map(failed, fn {id, {exception, stacktrace}} ->
+          {id, Exception.normalize(:exit, exception, stacktrace) |> Exception.message()}
+        end)
+    }
+  end
+
+  # [{1097, %{error: [], ok: [], simulation: Sim.Vegetation}}]
+  def aggregate_results(results, queue) do
+    %{
+      queue: queue,
+      results:
+        Enum.map(results, fn {time, %{error: error, ok: ok, simulation: simulation}} ->
+          %{simulation: simulation, time: time, errors: Enum.count(error), ok: Enum.count(ok)}
+        end)
+    }
+  end
+
+  def notify_sum(results) do
+    # PubSub.broadcast(topic, queue_result) | GenStage.cast(stage, {:receive, queue_result})
+    dbg(results)
+  end
+
+  def notify(%{error: _error, ok: _ok, simulation: _simulation} = result) do
+    # %{simulation: simulation, changed: ok} |> dbg()
+    # %{simulation: simulation, failed: error} |> dbg()
+    # PubSub.broadcast(topic, change) | GenStage.cast(stage, {:receive, change})
+    result
+  end
+end
+```
+
+```elixir
+Simulator.start_supervisor()
+# FieldSimulator.sim(map_pid)
+```
+
+```elixir
+defmodule Sim.SimulationLoop do
+  use GenServer
+
+  alias Sim.Queue
+
+  require Logger
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: opts[:name] || __MODULE__)
+  end
+
+  def prepare(%Sim.Queue{} = queue) do
+    GenServer.cast(__MODULE__, {:prepare, queue})
+  end
+
+  def start() do
+    GenServer.cast(__MODULE__, :start)
+  end
+
+  def stop() do
+    GenServer.cast(__MODULE__, :stop)
+  end
+
+  def init(opts) do
+    {:ok, pid} = Task.Supervisor.start_link(name: Sim.SimulationLoop.Task.Supervisor)
+    {:ok, %{running: false, queues: [], supervisor: pid, sim_args: opts[:sim_args] || []}}
+  end
+
+  def handle_cast({:prepare, queue}, state) do
+    {:noreply, %{state | queues: [queue | state.queues]}}
+  end
+
+  def handle_cast(:start, state) do
+    queues =
+      Enum.map(state.queues, fn queue ->
+        Map.put(queue, :timer, schedule_next_tick(queue))
+      end)
+
+    {:noreply, %{state | running: true, queues: queues}}
+  end
+
+  def handle_cast(:stop, state) do
+    Enum.map(state.queues, &stop_timer(&1.timer))
+
+    {:noreply,
+     %{state | running: false, queues: Enum.map(state.queues, &Map.put(&1, :timer, nil))}}
+  end
+
+  def handle_info({:tick, queue}, %{running: true} = state) do
+    state_queues = Enum.reject(state.queues, fn item -> queue.name == item.name end)
+
+    queue =
+      queue
+      |> Map.put(:timer, schedule_next_tick(queue))
+      |> Map.put(:task, execute(queue, state.supervisor, state.sim_args))
+
+    {:noreply, %{state | queues: [queue | state_queues]}}
+  end
+
+  def handle_info({:tick, _}, %{running: false} = state) do
+    Logger.warning("tick on stopped sim loop")
+    {:noreply, state}
+  end
+
+  def handle_info({ref, {time, {_results, queue}}}, state) do
+    Process.demonitor(ref, [:flush])
+
+    if time < queue.interval * 1000 do
+      Logger.info("queue #{queue.name} took #{time} μs")
+    else
+      Logger.warning(
+        "queue #{queue.name} took #{time} μs, but has an interval of #{queue.interval * 1000} μs"
+      )
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+    # reason Timeout (5000 ms) ???
+    queue = Enum.find(state.queues, fn queue -> get_task_ref(queue) == ref end)
+
+    if queue do
+      Logger.error("queue #{queue.name} failed! #{Exception.format_exit(reason)}")
+    else
+      Logger.error("UNKNOWN queue failed! #{Exception.format_exit(reason)}")
+    end
+
+    {:noreply, state}
+  end
+
+  defp get_task_ref(%Queue{task: nil}), do: nil
+  defp get_task_ref(%Queue{task: task}), do: task.ref
+
+  defp execute(queue, supervisor, sim_args) do
+    Task.Supervisor.async_nolink(supervisor, fn ->
+      Simulator.benchmark(fn ->
+        {execute_sim_function(queue, sim_args), queue}
+      end)
+    end)
+  end
+
+  defp execute_sim_function(%Queue{func: func} = queue, []) when is_function(func) do
+    queue.func.(queue)
+  end
+
+  defp execute_sim_function(%Queue{func: func} = queue, global_args) when is_function(func) do
+    queue.func.(queue, global_args)
+  end
+
+  defp execute_sim_function(%Queue{func: {module, sim_func, queue_args}} = queue, global_args) do
+    args = Keyword.merge(global_args, queue_args)
+    apply(module, sim_func, [queue, args])
+  end
+
+  defp schedule_next_tick(queue) do
+    Process.send_after(self(), {:tick, queue}, queue.interval)
+  end
+
+  defp stop_timer(nil), do: nil
+  defp stop_timer(ref), do: Process.cancel_timer(ref)
+end
+```
+
+```elixir
+Sim.SimulationLoop.start_link(sim_args: [proxy: :sim_data])
+
+Sim.SimulationLoop.prepare(%Sim.Queue{
+  name: :high,
+  func: {FieldSimulator, :sim, [proxy: :sim_data]},
+  interval: 500
+})
+
+Sim.SimulationLoop.prepare(%Sim.Queue{
+  name: :normal,
+  func: &FieldSimulator.sim/2,
+  interval: 2_000
+})
+
+Sim.SimulationLoop.prepare(%Sim.Queue{
+  name: :low,
+  func: &FieldSimulator.sim/2,
+  interval: 10_000
+})
+```
+
+```elixir
+Sim.SimulationLoop.start()
+Process.sleep(5_000)
+Sim.SimulationLoop.stop()
+```
+
+```elixir
+Sim.Data.all(map_pid)
+```
