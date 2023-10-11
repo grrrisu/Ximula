@@ -80,8 +80,8 @@ end
 
 ```elixir
 {:ok, map_pid} = Sim.Data.start_link(50)
-proxy = Sim.AccessProxy.start_link(agent: map_pid, name: :sim_data)
-Sim.AccessProxy.get(:sim_data)
+proxy = Ximula.AccessProxy.start_link(agent: map_pid, name: :sim_data)
+Ximula.AccessProxy.get(:sim_data)
 ```
 
 ## Simulations
@@ -197,18 +197,18 @@ defmodule FieldSimulator do
   end
 
   def get_data(proxy, name) do
-    Sim.AccessProxy.exclusive_get(proxy, fn grid ->
-      Sim.Grid.filter(grid, fn _x, _y, field ->
+    Ximula.AccessProxy.exclusive_get(proxy, fn grid ->
+      Ximula.Grid.filter(grid, fn _x, _y, field ->
         field.priority == name
       end)
     end)
   end
 
   def set_data(proxy, data) do
-    Sim.AccessProxy.update(proxy, fn grid ->
+    Ximula.AccessProxy.update(proxy, fn grid ->
       Enum.reduce(data, grid, fn field, acc ->
         {x, y} = field.position
-        Sim.Torus.put(acc, x, y, field)
+        Ximula.Torus.put(acc, x, y, field)
       end)
     end)
   end
