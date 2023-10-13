@@ -1,5 +1,5 @@
 defmodule Ximula.SimulatorTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias Ximula.SimulatorTest
   alias Ximula.Simulator
