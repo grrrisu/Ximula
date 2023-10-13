@@ -226,19 +226,19 @@ Ximula.Sim.Loop.start_link(sim_args: [proxy: :sim_data])
 ```
 
 ```elixir
-Ximula.Sim.Loop.prepare(%Ximula.Sim.Queue{
+Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :high,
   func: {FieldSimulator, :sim, [proxy: :sim_data]},
   interval: 500
 })
 
-Ximula.Sim.Loop.prepare(%Ximula.Sim.Queue{
+Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :normal,
   func: &FieldSimulator.sim/2,
   interval: 2_000
 })
 
-Ximula.Sim.Loop.prepare(%Ximula.Sim.Queue{
+Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :low,
   func: &FieldSimulator.sim/2,
   interval: 10_000
