@@ -24,8 +24,8 @@ defmodule Ximula.Sim.Loop do
     GenServer.start_link(__MODULE__, opts, name: opts[:name] || __MODULE__)
   end
 
-  def prepare(server \\ __MODULE__, %Queue{} = queue) do
-    GenServer.cast(server, {:prepare, queue})
+  def add_queue(server \\ __MODULE__, %Queue{} = queue) do
+    GenServer.cast(server, {:add_queue, queue})
   end
 
   def clear(server \\ __MODULE__) do
@@ -54,7 +54,7 @@ defmodule Ximula.Sim.Loop do
     {:noreply, %{state | running: false, queues: []}}
   end
 
-  def handle_cast({:prepare, queue}, state) do
+  def handle_cast({:add_queue, queue}, state) do
     {:noreply, %{state | queues: [queue | state.queues]}}
   end
 
