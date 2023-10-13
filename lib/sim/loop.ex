@@ -59,33 +59,15 @@ defmodule Ximula.Sim.Loop do
   end
 
   def handle_cast(:start_sim, state) do
-    queues =
-      Enum.map(state.queues, fn queue ->
-        Map.put(queue, :timer, schedule_next_tick(queue))
-      end)
-
-    {:noreply, %{state | running: true, queues: queues}}
+    {:noreply, %{state | running: true, queues: start_queues(state.queues)}}
   end
 
   def handle_cast(:stop_sim, state) do
-    queues =
-      Enum.map(state.queues, fn queue ->
-        stop_timer(queue.timer)
-        %{queue | timer: nil}
-      end)
-
-    {:noreply, %{state | running: false, queues: queues}}
+    {:noreply, %{state | running: false, queues: stop_queues(state.queues)}}
   end
 
   def handle_info({:tick, queue}, %{running: true} = state) do
-    state_queues = Enum.reject(state.queues, fn item -> queue.name == item.name end)
-
-    queue =
-      queue
-      |> Map.put(:timer, schedule_next_tick(queue))
-      |> Map.put(:task, execute(queue, state.supervisor, state.sim_args))
-
-    {:noreply, %{state | queues: [queue | state_queues]}}
+    {:noreply, %{state | queues: tick(queue, state)}}
   end
 
   def handle_info({:tick, _}, %{running: false} = state) do
@@ -93,9 +75,47 @@ defmodule Ximula.Sim.Loop do
     {:noreply, state}
   end
 
-  def handle_info({ref, {time, {_results, queue}}}, state) do
+  def handle_info({ref, response}, state) do
     Process.demonitor(ref, [:flush])
+    check_time(response)
+    {:noreply, state}
+  end
 
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+    # reason Timeout (5000 ms) ???
+    check_time(ref, reason, state)
+    {:noreply, state}
+  end
+
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
+  def start_queues(queues) do
+    Enum.map(queues, fn queue ->
+      Map.put(queue, :timer, schedule_next_tick(queue))
+    end)
+  end
+
+  def stop_queues(queues) do
+    Enum.map(queues, fn queue ->
+      stop_timer(queue.timer)
+      %{queue | timer: nil}
+    end)
+  end
+
+  def tick(current_queue, state) do
+    queues = Enum.reject(state.queues, fn item -> current_queue.name == item.name end)
+
+    queue =
+      current_queue
+      |> Map.put(:timer, schedule_next_tick(current_queue))
+      |> Map.put(:task, execute(current_queue, state.supervisor, state.sim_args))
+
+    [queue | queues]
+  end
+
+  def check_time({time, {_results, queue}}) do
     if time < queue.interval * 1000 do
       Logger.info("queue #{queue.name} took #{time} μs")
     else
@@ -103,12 +123,9 @@ defmodule Ximula.Sim.Loop do
         "queue #{queue.name} took #{time} μs, but has an interval of #{queue.interval * 1000} μs"
       )
     end
-
-    {:noreply, state}
   end
 
-  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
-    # reason Timeout (5000 ms) ???
+  def check_time(ref, reason, state) do
     queue = Enum.find(state.queues, fn queue -> get_task_ref(queue) == ref end)
 
     if queue do
@@ -116,8 +133,6 @@ defmodule Ximula.Sim.Loop do
     else
       Logger.error("UNKNOWN queue failed! #{Exception.format_exit(reason)}")
     end
-
-    {:noreply, state}
   end
 
   defp get_task_ref(%Queue{task: nil}), do: nil
