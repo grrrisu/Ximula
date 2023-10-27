@@ -73,14 +73,41 @@ defmodule Ximula.Grid do
   end
 
   # return the grid as a list
-  # note: the order of the values may be in random
+  # note: the order of the values may be in random order
   def values(grid) do
-    Enum.map(grid, fn {_x, col} ->
-      Enum.map(col, fn {_y, value} ->
-        value
+    map(grid, fn _x, _y, value -> value end)
+  end
+
+  # return the grid as a list
+  # note: the order of the values may be in random order
+  def position_and_values(grid) do
+    map(grid, fn x, y, value -> {x, y, value} end)
+  end
+
+  # return the grid as a list
+  # note: the order of the values may be in random order
+  def map(grid, func \\ &{&1, &2, &3}) do
+    Enum.map(grid, fn {x, col} ->
+      Enum.map(col, fn {y, value} ->
+        func.(x, y, value)
       end)
     end)
     |> List.flatten()
+  end
+
+  @spec sorted_list(any()) :: list()
+  def sorted_list(grid), do: sorted_list(grid, :asc)
+
+  def sorted_list(grid, :asc) do
+    grid
+    |> position_and_values()
+    |> Enum.sort_by(fn {x, y, _v} -> {y, x} end)
+  end
+
+  def sorted_list(grid, :cartesian) do
+    grid
+    |> position_and_values()
+    |> Enum.sort_by(fn {x, y, _v} -> {-y, x} end)
   end
 
   # note: the order of the values may be in random
@@ -92,21 +119,6 @@ defmodule Ximula.Grid do
       |> Enum.map(&(&1 |> Tuple.to_list() |> List.last()))
     end)
     |> List.flatten()
-  end
-
-  # [{x0, y0, value}, {x1, y0, value}, ...]
-  def map(grid, func \\ &{&1, &2, &3}) do
-    Enum.map(grid, fn {x, col} ->
-      Enum.map(col, fn {y, value} ->
-        {func.(x, y, value)}
-      end)
-    end)
-    |> Enum.reverse()
-    |> Enum.zip()
-    |> Enum.map(&Tuple.to_list/1)
-    |> List.flatten()
-    |> Enum.map(fn {i} -> i end)
-    |> Enum.reverse()
   end
 
   def merge_field(grid, x, y, value, func \\ &Map.merge(&1, &2)) do
