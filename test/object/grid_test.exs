@@ -72,9 +72,9 @@ defmodule Ximula.GridTest do
     assert [{0, 0}, {0, 1}, {1, 0}, {1, 1}] = Grid.values(grid)
   end
 
-  test "position_and_values" do
+  test "positions_and_values" do
     grid = Grid.create(2, 2, fn x, y -> x + y end)
-    assert [{0, 0, 0}, {0, 1, 1}, {1, 0, 1}, {1, 1, 2}] = Grid.position_and_values(grid)
+    assert [{0, 0, 0}, {0, 1, 1}, {1, 0, 1}, {1, 1, 2}] = Grid.positions_and_values(grid)
   end
 
   test "filter" do

@@ -80,7 +80,7 @@ defmodule Ximula.Grid do
 
   # return the grid as a list
   # note: the order of the values may be in random order
-  def position_and_values(grid) do
+  def positions_and_values(grid) do
     map(grid, fn x, y, value -> {x, y, value} end)
   end
 
@@ -100,13 +100,13 @@ defmodule Ximula.Grid do
 
   def sorted_list(grid, :asc) do
     grid
-    |> position_and_values()
+    |> positions_and_values()
     |> Enum.sort_by(fn {x, y, _v} -> {y, x} end)
   end
 
   def sorted_list(grid, :cartesian) do
     grid
-    |> position_and_values()
+    |> positions_and_values()
     |> Enum.sort_by(fn {x, y, _v} -> {-y, x} end)
   end
 
