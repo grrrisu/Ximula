@@ -57,6 +57,16 @@ defmodule Ximula.GridTest do
     assert {:error, _msg} = Grid.put(grid, "two", "one", "foo")
   end
 
+  test "width" do
+    grid = Grid.create(6, 3, "one")
+    assert 6 == Grid.width(grid)
+  end
+
+  test "height" do
+    grid = Grid.create(6, 3, "one")
+    assert 3 == Grid.height(grid)
+  end
+
   test "values" do
     grid = Grid.create(2, 2, fn x, y -> {x, y} end)
     assert [{0, 0}, {0, 1}, {1, 0}, {1, 1}] = Grid.values(grid)
