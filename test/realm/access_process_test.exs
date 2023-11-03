@@ -11,6 +11,20 @@ defmodule Ximula.AccessProxyTest do
     %{agent: agent, proxy: proxy, supervisor: supervisor}
   end
 
+  describe "update" do
+    test "update with passed data", %{proxy: proxy} do
+      AccessProxy.exclusive_get(proxy)
+      AccessProxy.update(proxy, 24)
+      assert 24 == AccessProxy.get(proxy)
+    end
+
+    test "update with a function", %{proxy: proxy} do
+      AccessProxy.exclusive_get(proxy)
+      AccessProxy.update(proxy, fn current -> current + 24 end)
+      assert 66 == AccessProxy.get(proxy)
+    end
+  end
+
   describe "exclusive_get" do
     test "are executed in sequence", %{proxy: proxy} do
       1..3
@@ -130,6 +144,27 @@ defmodule Ximula.AccessProxyTest do
       |> Task.await_many()
 
       assert 44 == AccessProxy.get()
+    end
+
+    test "release exclusive lock", %{proxy: proxy} do
+      result =
+        [
+          Task.async(fn ->
+            AccessProxy.exclusive_get(proxy)
+            Process.sleep(100)
+            :ok = AccessProxy.release(proxy)
+            AccessProxy.get()
+          end),
+          Task.async(fn ->
+            value = AccessProxy.exclusive_get(proxy)
+            Process.sleep(100)
+            :ok = AccessProxy.update(proxy, value + 1)
+            AccessProxy.get()
+          end)
+        ]
+        |> Enum.map(&Task.await(&1))
+
+      assert [42, 43] = result
     end
   end
 end

@@ -12,18 +12,18 @@ defmodule Ximula.AccessProxy do
   {:ok, pid} = Agent.start_link(fn -> 42 end)
 
   # normaly the agent will be referenced by name not pid, so that we don't need to monitor the agent
-  {:ok, _} = Sim.AccessProxy.start_link(agent: pid)
+  {:ok, _} = AccessProxy.start_link(agent: pid)
 
   1..3
   |> Enum.map(fn _n ->
       Task.async(fn ->
-        value = Sim.AccessProxy.exclusive_get()
+        value = AccessProxy.exclusive_get()
         Process.sleep(1_000)
-        :ok = Sim.AccessProxy.update(value + 1)
+        :ok = AccessProxy.update(value + 1)
       end)
     end)
   |> Task.await_many()
-  45 = Sim.AccessProxy.get()
+  45 = AccessProxy.get()
   """
 
   use GenServer
@@ -51,6 +51,10 @@ defmodule Ximula.AccessProxy do
 
   def update(server, data) do
     GenServer.call(server, {:update, fn _ -> data end})
+  end
+
+  def release(server \\ __MODULE__) do
+    GenServer.call(server, {:update, & &1})
   end
 
   def init(opts) do
