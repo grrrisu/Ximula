@@ -74,7 +74,7 @@ defmodule Ximula.GridTest do
 
   test "positions_and_values" do
     grid = Grid.create(2, 2, fn x, y -> x + y end)
-    assert [{0, 0, 0}, {0, 1, 1}, {1, 0, 1}, {1, 1, 2}] = Grid.positions_and_values(grid)
+    assert [{{0, 0}, 0}, {{0, 1}, 1}, {{1, 0}, 1}, {{1, 1}, 2}] = Grid.positions_and_values(grid)
   end
 
   test "filter" do
@@ -100,24 +100,24 @@ defmodule Ximula.GridTest do
 
   test "asc sorted_list" do
     grid = Grid.create(100, 50, 1) |> Grid.sorted_list()
-    assert {0, 0, 1} == Enum.at(grid, 0)
-    assert {1, 0, 1} == Enum.at(grid, 1)
-    assert {2, 0, 1} == Enum.at(grid, 2)
-    assert {0, 1, 1} == Enum.at(grid, 100)
-    assert {0, 2, 1} == Enum.at(grid, 200)
-    assert {0, 3, 1} == Enum.at(grid, 300)
-    assert {99, 49, 1} == Enum.at(grid, 4999)
+    assert {{0, 0}, 1} == Enum.at(grid, 0)
+    assert {{1, 0}, 1} == Enum.at(grid, 1)
+    assert {{2, 0}, 1} == Enum.at(grid, 2)
+    assert {{0, 1}, 1} == Enum.at(grid, 100)
+    assert {{0, 2}, 1} == Enum.at(grid, 200)
+    assert {{0, 3}, 1} == Enum.at(grid, 300)
+    assert {{99, 49}, 1} == Enum.at(grid, 4999)
   end
 
   test "cart sorted_list" do
     grid = Grid.create(100, 50, 1) |> Grid.sorted_list(:cartesian)
-    assert {0, 49, 1} == Enum.at(grid, 0)
-    assert {1, 49, 1} == Enum.at(grid, 1)
-    assert {2, 49, 1} == Enum.at(grid, 2)
-    assert {0, 48, 1} == Enum.at(grid, 100)
-    assert {0, 47, 1} == Enum.at(grid, 200)
-    assert {0, 46, 1} == Enum.at(grid, 300)
-    assert {99, 0, 1} == Enum.at(grid, 4999)
+    assert {{0, 49}, 1} == Enum.at(grid, 0)
+    assert {{1, 49}, 1} == Enum.at(grid, 1)
+    assert {{2, 49}, 1} == Enum.at(grid, 2)
+    assert {{0, 48}, 1} == Enum.at(grid, 100)
+    assert {{0, 47}, 1} == Enum.at(grid, 200)
+    assert {{0, 46}, 1} == Enum.at(grid, 300)
+    assert {{99, 0}, 1} == Enum.at(grid, 4999)
   end
 
   test "merge field" do
