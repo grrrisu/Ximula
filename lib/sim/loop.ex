@@ -6,8 +6,9 @@ defmodule Ximula.Sim.Loop do
 
   ```
   children = [
-    {Task.Supervisor, name: Ximula.Simulator.Task.Supervisor}
-    {Task.Supervisor, name: Ximula.Sim.Loop.Task.Supervisor}
+    {Task.Supervisor, name: Ximula.Simulator.Task.Supervisor},
+    {Task.Supervisor, name: Ximula.Sim.Loop.Task.Supervisor},
+    {Ximula.Sim.Loop}
   ]
 
   Supervisor.start_link(children, strategy: :one_for_one)
