@@ -14,6 +14,35 @@ defmodule Ximula.Sim.LoopTest do
     send(test_case, :success)
   end
 
+  describe "" do
+    setup do
+      %{loop: start_supervised!(Loop)}
+    end
+
+    test "add queue", %{loop: loop} do
+      assert [] == Loop.get_queues(loop)
+      :ok = Loop.add_queue(%Queue{name: "first"})
+      assert [queue] = Loop.get_queues(loop)
+      assert "first" == queue.name
+    end
+
+    test "set queue", %{loop: loop} do
+      assert [] == Loop.get_queues(loop)
+      :ok = Loop.add_queue(%Queue{name: "first"})
+      :ok = Loop.set_queue(%Queue{name: "second"})
+      assert 2 == Loop.get_queues(loop) |> Enum.count()
+      assert %Queue{name: "second"} = Loop.get_queues(loop) |> Enum.find(&(&1.name == "second"))
+    end
+
+    test "replace queue", %{loop: loop} do
+      assert [] == Loop.get_queues(loop)
+      :ok = Loop.add_queue(%Queue{name: "first", interval: 5})
+      :ok = Loop.set_queue(%Queue{name: "first", interval: 10})
+      assert 1 == Loop.get_queues(loop) |> Enum.count()
+      assert %Queue{name: "first", interval: 10} = Loop.get_queues(loop) |> List.first()
+    end
+  end
+
   describe "start and stop" do
     setup do
       simulator_tasks = start_supervised!({Task.Supervisor, name: Simulator.Task.Supervisor})
@@ -28,7 +57,7 @@ defmodule Ximula.Sim.LoopTest do
       Loop.clear(loop)
       Loop.add_queue(loop, queue)
       Loop.start_sim(loop)
-      Process.sleep(10)
+      Process.sleep(50)
       Loop.stop_sim(loop)
       assert_received(:success)
     end
@@ -39,7 +68,7 @@ defmodule Ximula.Sim.LoopTest do
       Loop.clear(loop)
       Loop.add_queue(loop, queue)
       Loop.start_sim(loop)
-      Process.sleep(50)
+      Process.sleep(200)
       Loop.stop_sim(loop)
       assert_received(:success)
     end
@@ -57,16 +86,22 @@ defmodule Ximula.Sim.LoopTest do
       assert Enum.all?(queues, &(&1.timer == nil))
     end
 
-    test "should execute sim function", %{queues: queues} do
+    test "should execute sim function" do
       loop_tasks = start_supervised!({Task.Supervisor, name: Sim.Loop.Task.Supervisor})
       queue = %Queue{name: "test", func: &LoopTest.one/1}
-      queues = Loop.tick(queue, %{queues: [queue | queues], supervisor: loop_tasks, sim_args: []})
-      %Queue{task: task, timer: timer} = Enum.find(queues, &(&1.name == "test"))
+      %Queue{task: task, timer: timer} = Loop.tick(queue, loop_tasks, [])
       assert task != nil
       assert timer != nil
     end
 
-    @tag :skip
-    test "should check time used to execute against queue interval"
+    test "should skip execution if task is still running" do
+      loop_tasks = start_supervised!({Task.Supervisor, name: Sim.Loop.Task.Supervisor})
+      queue = %Queue{name: "test", func: &LoopTest.one/1, task: self(), timer: self()}
+      %Queue{task: task, timer: timer} = Loop.tick(queue, loop_tasks, [])
+      # still the same task
+      assert task == self()
+      # new timer has been set
+      assert timer != self()
+    end
   end
 end
