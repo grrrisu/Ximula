@@ -25,8 +25,17 @@ defmodule Ximula.Sim.Loop do
     GenServer.start_link(__MODULE__, opts, name: opts[:name] || __MODULE__)
   end
 
+  def get_queues(server \\ __MODULE__) do
+    GenServer.call(server, :get_queues)
+  end
+
   def add_queue(server \\ __MODULE__, %Queue{} = queue) do
     GenServer.cast(server, {:add_queue, queue})
+  end
+
+  # adds or replaces a queue with the same name
+  def set_queue(server \\ __MODULE__, %Queue{} = queue) do
+    GenServer.cast(server, {:set_queue, queue})
   end
 
   def clear(server \\ __MODULE__) do
@@ -51,12 +60,26 @@ defmodule Ximula.Sim.Loop do
      }}
   end
 
+  def handle_call(:get_queues, _from, state) do
+    {:reply, state.queues, state}
+  end
+
   def handle_cast(:clear, state) do
     {:noreply, %{state | running: false, queues: []}}
   end
 
   def handle_cast({:add_queue, queue}, state) do
     {:noreply, %{state | queues: [queue | state.queues]}}
+  end
+
+  def handle_cast({:set_queue, queue}, state) do
+    queues =
+      case Enum.find_index(state.queues, &(&1.name == queue.name)) do
+        nil -> [queue | state.queues]
+        index -> List.replace_at(state.queues, index, queue)
+      end
+
+    {:noreply, %{state | queues: queues}}
   end
 
   def handle_cast(:start_sim, state) do
@@ -68,7 +91,14 @@ defmodule Ximula.Sim.Loop do
   end
 
   def handle_info({:tick, queue}, %{running: true} = state) do
-    {:noreply, %{state | queues: tick(queue, state)}}
+    queues =
+      find_and_update_queue!(
+        state.queues,
+        &(&1.name == queue.name),
+        &tick(&1, state.supervisor, state.sim_args)
+      )
+
+    {:noreply, %{state | queues: queues}}
   end
 
   def handle_info({:tick, _}, %{running: false} = state) do
@@ -79,13 +109,12 @@ defmodule Ximula.Sim.Loop do
   def handle_info({ref, response}, state) do
     Process.demonitor(ref, [:flush])
     check_time(response)
-    {:noreply, state}
+    {:noreply, %{state | queues: reset_queue_task!(state.queues, ref)}}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
-    # reason Timeout (5000 ms) ???
     check_time(ref, reason, state)
-    {:noreply, state}
+    {:noreply, %{state | queues: reset_queue_task!(state.queues, ref)}}
   end
 
   def handle_info(_msg, state) do
@@ -105,15 +134,15 @@ defmodule Ximula.Sim.Loop do
     end)
   end
 
-  def tick(current_queue, state) do
-    queues = Enum.reject(state.queues, fn item -> current_queue.name == item.name end)
+  def tick(%Queue{task: nil} = queue, supervisor, args) do
+    queue
+    |> Map.put(:timer, schedule_next_tick(queue))
+    |> Map.put(:task, execute(queue, supervisor, args))
+  end
 
-    queue =
-      current_queue
-      |> Map.put(:timer, schedule_next_tick(current_queue))
-      |> Map.put(:task, execute(current_queue, state.supervisor, state.sim_args))
-
-    [queue | queues]
+  def tick(%Queue{task: _still_running} = queue, _supervisor, _args) do
+    Logger.warning("Queue is too slow! Previous task didn't return yet. Skipping this tick!")
+    Map.put(queue, :timer, schedule_next_tick(queue))
   end
 
   def check_time({time, {_results, queue}}) do
@@ -166,4 +195,15 @@ defmodule Ximula.Sim.Loop do
 
   defp stop_timer(nil), do: nil
   defp stop_timer(ref), do: Process.cancel_timer(ref)
+
+  defp find_and_update_queue!(queues, find_func, update_func) do
+    case Enum.find_index(queues, &find_func.(&1)) do
+      nil -> raise(KeyError, "FATAL: Queue could not be found. Restarting Sim.Loop!")
+      index -> List.update_at(queues, index, &update_func.(&1))
+    end
+  end
+
+  defp reset_queue_task!(queues, ref) do
+    find_and_update_queue!(queues, &(get_task_ref(&1) == ref), &Map.put(&1, :task, nil))
+  end
 end
