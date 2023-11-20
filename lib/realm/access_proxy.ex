@@ -95,8 +95,8 @@ defmodule Ximula.AccessProxy do
   def handle_call({:update, func}, {pid, _}, %{caller: {pid, monitor_ref}} = state) do
     update_data(state.agent, func)
     Process.demonitor(monitor_ref, [:flush])
-    {next_caller, state} = reply_to_next_caller(state)
-    {:reply, :ok, %{state | caller: next_caller}}
+    {next_caller, requests} = reply_to_next_caller(state)
+    {:reply, :ok, %{state | caller: next_caller, requests: requests}}
   end
 
   def handle_call({:update, _func}, _from, state) do
@@ -139,8 +139,8 @@ defmodule Ximula.AccessProxy do
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %{caller: {pid, _}} = state) do
-    {next_caller, state} = reply_to_next_caller(state)
-    {:noreply, %{state | caller: next_caller}}
+    {next_caller, requests} = reply_to_next_caller(state)
+    {:noreply, %{state | caller: next_caller, requests: requests}}
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
@@ -161,10 +161,10 @@ defmodule Ximula.AccessProxy do
   end
 
   defp reply_to_next_caller(state) do
-    [{{pid, _ref} = next_caller, monitor_ref, get_func} | requests] = state.requests
+    [{{pid, _ref} = next_caller, monitor_ref, get_func} | remaining] = state.requests
     :ok = GenServer.reply(next_caller, get_data(state.agent, get_func))
     start_check_timeout(next_caller, monitor_ref, state.max_duration)
-    {{pid, monitor_ref}, %{state | requests: requests}}
+    {{pid, monitor_ref}, remaining}
   end
 
   defp start_check_timeout(current_caller, monitor_ref, max_duration) do
