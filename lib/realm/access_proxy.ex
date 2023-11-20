@@ -3,10 +3,10 @@ defmodule Ximula.AccessProxy do
   Keeps updates on an agent in sequence to avoid race conditions by overwriting data,
   while remaining responsive to just read operations.
 
-  data = AccessProxy.exclusive_get() # blocks until an other exclusive client updates the data
+  data = AccessProxy.get!() # blocks until an other exclusive client updates the data
   data = AccessProxy.get() # never blocks
   :ok = AccessProxy.update(data) # releases the lock and will reply to the next client in line with the updated data
-  {:error, msg} = AccessProxy.update(data) # if between exclusive_get and update too much time elapsed (default 5 sec)
+  {:error, msg} = AccessProxy.update(data) # if between get! and update too much time elapsed (default 5 sec)
 
   Example:
   {:ok, pid} = Agent.start_link(fn -> 42 end)
@@ -17,7 +17,7 @@ defmodule Ximula.AccessProxy do
   1..3
   |> Enum.map(fn _n ->
       Task.async(fn ->
-        value = AccessProxy.exclusive_get()
+        value = AccessProxy.get!()
         Process.sleep(1_000)
         :ok = AccessProxy.update(value + 1)
       end)
@@ -39,8 +39,8 @@ defmodule Ximula.AccessProxy do
     GenServer.call(server, {:get, func})
   end
 
-  def exclusive_get(server \\ __MODULE__, func \\ & &1) do
-    GenServer.call(server, {:exclusive_get, func})
+  def get!(server \\ __MODULE__, func \\ & &1) do
+    GenServer.call(server, {:get!, func})
   end
 
   def update(server \\ __MODULE__, data)
@@ -71,17 +71,17 @@ defmodule Ximula.AccessProxy do
     {:reply, get_data(state.agent, func), state}
   end
 
-  def handle_call({:exclusive_get, func}, {pid, _} = from, %{caller: nil} = state) do
+  def handle_call({:get!, func}, {pid, _} = from, %{caller: nil} = state) do
     monitor_ref = Process.monitor(pid)
     start_check_timeout(from, monitor_ref, state.max_duration)
     {:reply, get_data(state.agent, func), %{state | caller: {pid, monitor_ref}}}
   end
 
-  def handle_call({:exclusive_get, func}, {pid, _}, %{caller: {pid, _}} = state) do
+  def handle_call({:get!, func}, {pid, _}, %{caller: {pid, _}} = state) do
     {:reply, get_data(state.agent, func), state}
   end
 
-  def handle_call({:exclusive_get, func}, {pid, _} = from, state) do
+  def handle_call({:get!, func}, {pid, _} = from, state) do
     monitor_ref = Process.monitor(pid)
     {:noreply, %{state | requests: state.requests ++ [{from, monitor_ref, func}]}}
   end
@@ -102,7 +102,7 @@ defmodule Ximula.AccessProxy do
   def handle_call({:update, _func}, _from, state) do
     {:reply,
      {:error,
-      "request the data first with AccessProxy#exclusive_get or maybe too much time elapsed since exclusive_get was called"},
+      "request the data first with AccessProxy#get! or maybe too much time elapsed since get! was called"},
      state}
   end
 

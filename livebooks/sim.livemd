@@ -154,7 +154,7 @@ defmodule FieldSimulator do
   end
 
   def get_data(proxy, name) do
-    Ximula.AccessProxy.exclusive_get(proxy, fn grid ->
+    Ximula.AccessProxy.get!(proxy, fn grid ->
       Ximula.Grid.filter(grid, fn _x, _y, field ->
         field.priority == name
       end)
