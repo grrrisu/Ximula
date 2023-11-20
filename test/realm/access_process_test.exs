@@ -13,24 +13,24 @@ defmodule Ximula.AccessProxyTest do
 
   describe "update" do
     test "update with passed data", %{proxy: proxy} do
-      AccessProxy.exclusive_get(proxy)
+      AccessProxy.get!(proxy)
       AccessProxy.update(proxy, 24)
       assert 24 == AccessProxy.get(proxy)
     end
 
     test "update with a function", %{proxy: proxy} do
-      AccessProxy.exclusive_get(proxy)
+      AccessProxy.get!(proxy)
       AccessProxy.update(proxy, fn current -> current + 24 end)
       assert 66 == AccessProxy.get(proxy)
     end
   end
 
-  describe "exclusive_get" do
+  describe "get!" do
     test "are executed in sequence", %{proxy: proxy} do
       1..3
       |> Enum.map(fn _n ->
         Task.async(fn ->
-          value = AccessProxy.exclusive_get(proxy)
+          value = AccessProxy.get!(proxy)
           Process.sleep(100)
           :ok = AccessProxy.update(proxy, value + 1)
         end)
@@ -40,7 +40,7 @@ defmodule Ximula.AccessProxyTest do
       assert 45 == AccessProxy.get()
     end
 
-    test "allow update only after exclusive_get", %{proxy: proxy} do
+    test "allow update only after get!", %{proxy: proxy} do
       value = AccessProxy.get(proxy)
       assert {:error, _} = AccessProxy.update(proxy, value + 1)
       assert 42 == AccessProxy.get(proxy)
@@ -50,7 +50,7 @@ defmodule Ximula.AccessProxyTest do
       result =
         [
           Task.async(fn ->
-            value = AccessProxy.exclusive_get(proxy)
+            value = AccessProxy.get!(proxy)
             Process.sleep(100)
             :ok = AccessProxy.update(proxy, value + 1)
             AccessProxy.get()
@@ -60,7 +60,7 @@ defmodule Ximula.AccessProxyTest do
             AccessProxy.get()
           end),
           Task.async(fn ->
-            value = AccessProxy.exclusive_get(proxy)
+            value = AccessProxy.get!(proxy)
             Process.sleep(100)
             :ok = AccessProxy.update(proxy, value + 1)
             AccessProxy.get()
@@ -75,12 +75,12 @@ defmodule Ximula.AccessProxyTest do
       result =
         [
           Task.Supervisor.async_stream_nolink(supervisor, [1], fn _n ->
-            _value = AccessProxy.exclusive_get(proxy)
+            _value = AccessProxy.get!(proxy)
             Process.sleep(10)
             Process.exit(self(), :upps)
           end),
           Task.Supervisor.async_stream_nolink(supervisor, [2], fn _n ->
-            value = AccessProxy.exclusive_get(proxy)
+            value = AccessProxy.get!(proxy)
             Process.sleep(100)
             :ok = AccessProxy.update(proxy, value + 1)
             AccessProxy.get()
@@ -96,18 +96,18 @@ defmodule Ximula.AccessProxyTest do
       result =
         [
           Task.Supervisor.async_stream_nolink(supervisor, [2], fn _n ->
-            value = AccessProxy.exclusive_get(proxy)
+            value = AccessProxy.get!(proxy)
             Process.sleep(100)
             :ok = AccessProxy.update(proxy, value + 1)
             AccessProxy.get()
           end),
           Task.Supervisor.async_stream_nolink(supervisor, [1], fn _n ->
-            _value = AccessProxy.exclusive_get(proxy)
+            _value = AccessProxy.get!(proxy)
             Process.sleep(10)
             Process.exit(self(), :upps)
           end),
           Task.Supervisor.async_stream_nolink(supervisor, [2], fn _n ->
-            value = AccessProxy.exclusive_get(proxy)
+            value = AccessProxy.get!(proxy)
             Process.sleep(100)
             :ok = AccessProxy.update(proxy, value + 1)
             AccessProxy.get()
@@ -128,16 +128,16 @@ defmodule Ximula.AccessProxyTest do
 
       [
         Task.async(fn ->
-          value = AccessProxy.exclusive_get(proxy)
+          value = AccessProxy.get!(proxy)
           Process.sleep(100)
           {:error, _msg} = AccessProxy.update(proxy, value + 10)
         end),
         Task.async(fn ->
-          value = AccessProxy.exclusive_get(proxy)
+          value = AccessProxy.get!(proxy)
           :ok = AccessProxy.update(proxy, value + 1)
         end),
         Task.async(fn ->
-          value = AccessProxy.exclusive_get(proxy)
+          value = AccessProxy.get!(proxy)
           :ok = AccessProxy.update(proxy, value + 1)
         end)
       ]
@@ -150,13 +150,13 @@ defmodule Ximula.AccessProxyTest do
       result =
         [
           Task.async(fn ->
-            AccessProxy.exclusive_get(proxy)
+            AccessProxy.get!(proxy)
             Process.sleep(100)
             :ok = AccessProxy.release(proxy)
             AccessProxy.get()
           end),
           Task.async(fn ->
-            value = AccessProxy.exclusive_get(proxy)
+            value = AccessProxy.get!(proxy)
             Process.sleep(100)
             :ok = AccessProxy.update(proxy, value + 1)
             AccessProxy.get()
