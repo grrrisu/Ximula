@@ -119,8 +119,8 @@ defmodule Ximula.AccessProxy do
         %{caller: {pid, monitor_ref}} = state
       ) do
     Process.demonitor(monitor_ref, [:flush])
-    {next_caller, state} = reply_to_next_caller(state)
-    {:noreply, %{state | caller: next_caller}}
+    {next_caller, requests} = reply_to_next_caller(state)
+    {:noreply, %{state | caller: next_caller, requests: requests}}
   end
 
   def handle_info({:check_timeout, _}, state) do
