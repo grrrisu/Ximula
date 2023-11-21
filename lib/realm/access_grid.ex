@@ -102,22 +102,22 @@ defmodule Ximula.AccessGrid do
 
   def handle_call({:get!, {x, y}}, from, state) do
     caller = Grid.get(state.caller, x, y)
-    reply_to_get!({x, y}, from, caller, state)
+    handle_get!({x, y}, from, caller, state)
   end
 
   def handle_call({:update, {x, y}, data}, from, state) do
     caller = Grid.get(state.caller, x, y)
     requests = Grid.get(state.requests, x, y)
-    reply_to_update({x, y, data}, from, {caller, requests}, state)
+    handle_update({x, y, data}, from, {caller, requests}, state)
   end
 
   def handle_info({:check_timeout, {x, y}, {pid, _ref}, monitor_ref}, state) do
     caller = Grid.get(state.caller, x, y)
     requests = Grid.get(state.requests, x, y)
-    reply_to_check_timeout({x, y}, pid, monitor_ref, {caller, requests}, state)
+    handle_check_timeout({x, y}, pid, monitor_ref, {caller, requests}, state)
   end
 
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, %{caller: {pid, _}} = state) do
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
     {:noreply,
      state
      |> remove_caller(pid)
@@ -128,7 +128,7 @@ defmodule Ximula.AccessGrid do
     {:noreply, state}
   end
 
-  defp reply_to_get!({x, y}, {pid, _} = from, nil, state) do
+  defp handle_get!({x, y}, {pid, _} = from, nil, state) do
     monitor_ref = Process.monitor(pid)
     caller = Grid.put(state.caller, x, y, {pid, monitor_ref})
     start_check_timeout({x, y}, from, monitor_ref, state.max_duration)
@@ -136,88 +136,86 @@ defmodule Ximula.AccessGrid do
     {:reply, get_data(state.agent, {x, y}), %{state | caller: caller}}
   end
 
-  defp reply_to_get!({x, y}, {pid, _}, {pid, _}, state) do
+  defp handle_get!({x, y}, {pid, _}, {pid, _}, state) do
     {:reply, get_data(state.agent, {x, y}), state}
   end
 
-  defp reply_to_get!({x, y}, {pid, _} = from, _caller, state) do
+  defp handle_get!({x, y}, {pid, _} = from, _caller, state) do
     monitor_ref = Process.monitor(pid)
     requests = Grid.get(state.requests, x, y)
     requests = Grid.put(state.requests, x, y, requests ++ [{from, monitor_ref, {x, y}}])
     {:noreply, %{state | requests: requests}}
   end
 
-  defp reply_to_update({x, y, data}, {pid, _}, {{pid, monitor_ref}, []}, state) do
+  defp handle_update({x, y, data}, {pid, _}, {{pid, monitor_ref}, []}, state) do
     update_data(state.agent, {x, y}, data)
     Process.demonitor(monitor_ref, [:flush])
     {:reply, :ok, %{state | caller: Grid.put(state.caller, x, y, nil)}}
   end
 
-  defp reply_to_update({x, y, data}, {pid, _}, {{pid, monitor_ref}, _requests}, state) do
+  defp handle_update({x, y, data}, {pid, _}, {{pid, monitor_ref}, _requests}, state) do
     update_data(state.agent, {x, y}, data)
     Process.demonitor(monitor_ref, [:flush])
-    {next_caller, state} = reply_to_next_caller({x, y}, state)
-    {:reply, :ok, %{state | caller: Grid.put(state.caller, x, y, next_caller)}}
+    {next_caller, requests} = reply_to_next_caller({x, y}, state)
+
+    {:reply, :ok,
+     %{state | caller: Grid.put(state.caller, x, y, next_caller), requests: requests}}
   end
 
-  defp reply_to_update({x, y, _data}, _from, {_caller, _requests}, state) do
+  defp handle_update({x, y, _data}, _from, {_caller, _requests}, state) do
     {:reply,
      {:error,
       "request the data first with AccessGrid#get!({#{x},#{y}}) or maybe too much time elapsed since get! was called"},
      state}
   end
 
-  defp reply_to_check_timeout({x, y}, pid, monitor_ref, {{pid, monitor_ref}, []}, state) do
+  defp handle_check_timeout({x, y}, pid, monitor_ref, {{pid, monitor_ref}, []}, state) do
     Process.demonitor(monitor_ref, [:flush])
     {:noreply, %{state | caller: Grid.put(state.caller, x, y, nil)}}
   end
 
-  defp reply_to_check_timeout({x, y}, pid, monitor_ref, {{pid, monitor_ref}, _requests}, state) do
+  defp handle_check_timeout({x, y}, pid, monitor_ref, {{pid, monitor_ref}, _requests}, state) do
     Process.demonitor(monitor_ref, [:flush])
     {next_caller, requests} = reply_to_next_caller({x, y}, state)
-
-    {:noreply,
-     %{
-       state
-       | caller: Grid.put(state.caller, x, y, next_caller),
-         requests: Grid.put(state.requests, x, y, requests)
-     }}
+    {:noreply, %{state | caller: Grid.put(state.caller, x, y, next_caller), requests: requests}}
   end
 
-  defp reply_to_check_timeout(_pos, _pid, _monitor_ref, _caller_requests, state) do
+  defp handle_check_timeout(_pos, _pid, _monitor_ref, _caller_requests, state) do
     {:noreply, state}
   end
 
   defp remove_caller(state, pid) do
     state.caller
     |> Grid.positions_and_values()
-    |> Enum.filter(fn {_pos, {c_pid, _}} -> c_pid == pid end)
+    |> Enum.filter(&caller_eql(&1, pid))
     |> Enum.map(fn {{x, y}, _} ->
       case Grid.get(state.requests, x, y) do
-        [] -> {{x, y}, {nil, []}}
+        [] -> {{x, y}, {nil, state.requests}}
         _ -> {{x, y}, reply_to_next_caller({x, y}, state)}
       end
     end)
     |> Enum.reduce(state, fn {{x, y}, {next_caller, requests}}, state ->
-      %{
-        state
-        | caller: Grid.put(state.caller, x, y, next_caller),
-          requests: Grid.put(state.requests, x, y, requests)
-      }
+      %{state | caller: Grid.put(state.caller, x, y, next_caller), requests: requests}
     end)
   end
+
+  defp caller_eql({_pos, nil}, _pid), do: nil
+  defp caller_eql({_pos, {c_pid, _}}, pid), do: c_pid == pid
 
   defp remove_request(state, pid) do
     state.requests
     |> Grid.positions_and_values()
     |> Enum.filter(fn {_pos, reqs} ->
-      Enum.any?(reqs, fn {req_pid, _ref, _func} -> req_pid == pid end)
+      Enum.any?(reqs, &request_eql(&1, pid))
     end)
     |> Enum.map(fn {_pos, reqs} ->
-      Enum.reject(reqs, fn {req_pid, _ref, _func} -> req_pid == pid end)
+      Enum.reject(reqs, &request_eql(&1, pid))
     end)
     |> Enum.reduce(state, &Grid.apply_changes(&2, &1))
   end
+
+  defp request_eql(nil, _pid), do: nil
+  defp request_eql({req_pid, _ref, _func}, pid), do: req_pid == pid
 
   defp get_data(agent, {x, y}) do
     Agent.get(agent, &Grid.get(&1, x, y))
