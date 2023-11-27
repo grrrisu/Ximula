@@ -196,4 +196,56 @@ defmodule Ximula.AccessGridTest do
       assert [12, 13] = result
     end
   end
+
+  describe "update_all!" do
+    test "get list and update all", %{grid: grid} do
+      list = AccessGrid.get_list!([{0, 0}, {1, 1}], grid)
+      assert [0, 11] = list
+      :ok = AccessGrid.update_all!([{{0, 0}, 100}, {{1, 1}, 111}], grid)
+      assert 100 == AccessGrid.get({0, 0}, grid)
+      assert 111 == AccessGrid.get({1, 1}, grid)
+    end
+
+    test "if update fails nothing is updated", %{grid: grid} do
+      list = AccessGrid.get_list!([{0, 0}, {1, 2}], grid)
+      assert [0, 12] = list
+      {:error, _} = AccessGrid.update_all!([{{0, 0}, 100}, {{1, 1}, 111}], grid)
+      assert 0 == AccessGrid.get({0, 0}, grid)
+      assert 12 == AccessGrid.get({1, 2}, grid)
+    end
+
+    test "if update fails the caller is removed", %{grid: grid} do
+      list = AccessGrid.get_list!([{0, 0}, {1, 2}], grid)
+      assert [0, 12] = list
+      {:error, _} = AccessGrid.update_all!([{{0, 0}, 100}, {{1, 1}, 111}], grid)
+      {:error, _} = AccessGrid.update_all!([{{0, 0}, 100}, {{1, 2}, 111}], grid)
+      assert 0 == AccessGrid.get({0, 0}, grid)
+      assert 11 == AccessGrid.get({1, 1}, grid)
+      assert 12 == AccessGrid.get({1, 2}, grid)
+    end
+
+    test "partial get and updates", %{grid: grid} do
+      list = AccessGrid.get_list!([{0, 0}, {1, 1}], grid)
+      assert [0, 11] = list
+      assert 2 = AccessGrid.get!({0, 2}, grid)
+      :ok = AccessGrid.update_all!([{{0, 0}, 100}, {{0, 2}, 200}], grid)
+      assert 100 == AccessGrid.get({0, 0}, grid)
+      assert 200 == AccessGrid.get({0, 2}, grid)
+      assert 11 == AccessGrid.get({1, 1}, grid)
+      :ok = AccessGrid.update({1, 1}, 111, grid)
+      assert 100 == AccessGrid.get({0, 0}, grid)
+      assert 200 == AccessGrid.get({0, 2}, grid)
+      assert 111 == AccessGrid.get({1, 1}, grid)
+    end
+
+    test "get! and update must be in the same process" do
+      data =
+        [{0, 0}, {0, 1}, {0, 2}]
+        |> Enum.map(&Task.async(fn -> AccessGrid.get!(&1) end))
+        |> Enum.map(&Task.await/1)
+
+      assert [0, 1, 2] == data
+      {:error, _} = AccessGrid.update_all!([{{0, 0}, 100}, {{0, 1}, 101}, {{0, 2}, 102}])
+    end
+  end
 end
