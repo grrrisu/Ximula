@@ -3,27 +3,33 @@ defmodule Ximula.AccessGrid do
   Keeps updates on an agent in sequence to avoid race conditions by overwriting data,
   while remaining responsive to just read operations.
 
-  data = AccessProxy.get!() # blocks until an other exclusive client updates the data
-  data = AccessProxy.get() # never blocks
-  :ok = AccessProxy.update(data) # releases the lock and will reply to the next client in line with the updated data
-  {:error, msg} = AccessProxy.update(data) # if between get! and update too much time elapsed (default 5 sec)
+  data = AccessGrid.get!({1,2}) # blocks until an other exclusive client updates the data
+  data = AccessGrid.get({1,2}) # never blocks
+  :ok = AccessGrid.update({1,2}, data) # releases the lock and will reply to the next client in line with the updated data
+  {:error, msg} = AccessGrid.update({1,2}, data) # if between get! and update too much time elapsed (default 5 sec)
+
+  different updates
+
+  Acc
+
+  NOTE: get! and update must be called within the same process
 
   Example:
-  {:ok, pid} = Agent.start_link(fn -> 42 end)
+  {:ok, pid} = Agent.start_link(fn -> Grid.create(5, 5, 0) end)
 
   # normaly the agent will be referenced by name not pid, so that we don't need to monitor the agent
-  {:ok, _} = AccessProxy.start_link(agent: pid)
+  {:ok, _} = AccessGrid.start_link(agent: pid)
 
   1..3
   |> Enum.map(fn _n ->
       Task.async(fn ->
-        value = AccessProxy.get!()
+        value = AccessGrid.get!({1,2})
         Process.sleep(1_000)
-        :ok = AccessProxy.update(value + 1)
+        :ok = AccessGrid.update({1,2}, value + 1)
       end)
     end)
   |> Task.await_many()
-  45 = AccessProxy.get()
+  3 = AccessGrid.get()
   """
 
   use GenServer
@@ -64,15 +70,43 @@ defmodule Ximula.AccessGrid do
     GenServer.call(server, {:get!, position})
   end
 
+  def get_list!(list, server \\ __MODULE__) when is_list(list) do
+    Enum.map(list, &get!(&1, server))
+  end
+
+  # func must return a list of [position]
+  # depending if some items of the list are occupied, this function is faster or slower
+  def filter!(func, server \\ __MODULE__) when is_function(func) do
+    get(func, server)
+    |> get_list!(server)
+  end
+
   @doc """
   needs previously called get!
   """
   def update(position, data, server \\ __MODULE__) when is_tuple(position) do
-    GenServer.call(server, {:update, position, data})
+    GenServer.call(server, {:update_all!, [{position, data}]})
+  end
+
+  @doc """
+  updates the list one by one, allowing read actions inbetween
+  list of [{position, data}]
+  """
+  def update_all(list, server \\ __MODULE__) when is_list(list) do
+    list |> Enum.map(fn {position, data} -> update(position, data, server) end)
+  end
+
+  @doc """
+  updates the list at once, without interruption.
+  if the update fails, the locks will be removed, while the original state kept
+  list of [{position, data}]
+  """
+  def update_all!(list, server \\ __MODULE__) when is_list(list) do
+    GenServer.call(server, {:update_all!, list})
   end
 
   def release(position, server \\ __MODULE__) when is_tuple(position) do
-    GenServer.call(server, {:update, position, & &1})
+    update(position, get(position, server), server)
   end
 
   def init(opts) do
@@ -105,10 +139,31 @@ defmodule Ximula.AccessGrid do
     handle_get!({x, y}, from, caller, state)
   end
 
-  def handle_call({:update, {x, y}, data}, from, state) do
-    caller = Grid.get(state.caller, x, y)
-    requests = Grid.get(state.requests, x, y)
-    handle_update({x, y, data}, from, {caller, requests}, state)
+  def handle_call({:update_all!, list}, {pid, _ref}, state) do
+    list
+    |> Enum.map(fn {{x, y}, new_data} ->
+      %{
+        valid: true,
+        position: {x, y},
+        data: new_data,
+        caller: Grid.get(state.caller, x, y),
+        requests: Grid.get(state.requests, x, y)
+      }
+    end)
+    |> Enum.map_reduce(true, fn %{caller: caller} = item, valid ->
+      item = validate_and_demonitor(item, caller, pid)
+      {item, valid && item.valid}
+    end)
+    |> then(fn {list, valid} ->
+      Enum.map(list, &set_data(&1, agent: state.agent, valid: valid))
+    end)
+    |> Enum.map(&set_requests(&1, max_duration: state.max_duration))
+    |> Enum.reduce({state, []}, fn %{position: {x, y}} = item, {state, errors} ->
+      {merge_update(state, item), set_errors(errors, {x, y}, item.valid)}
+    end)
+    |> then(fn {state, errors} ->
+      update_reply(errors, pid, state)
+    end)
   end
 
   def handle_info({:check_timeout, {x, y}, {pid, _ref}, monitor_ref}, state) do
@@ -147,28 +202,6 @@ defmodule Ximula.AccessGrid do
     {:noreply, %{state | requests: requests}}
   end
 
-  defp handle_update({x, y, data}, {pid, _}, {{pid, monitor_ref}, []}, state) do
-    update_data(state.agent, {x, y}, data)
-    Process.demonitor(monitor_ref, [:flush])
-    {:reply, :ok, %{state | caller: Grid.put(state.caller, x, y, nil)}}
-  end
-
-  defp handle_update({x, y, data}, {pid, _}, {{pid, monitor_ref}, _requests}, state) do
-    update_data(state.agent, {x, y}, data)
-    Process.demonitor(monitor_ref, [:flush])
-    {next_caller, requests} = reply_to_next_caller({x, y}, state)
-
-    {:reply, :ok,
-     %{state | caller: Grid.put(state.caller, x, y, next_caller), requests: requests}}
-  end
-
-  defp handle_update({x, y, _data}, _from, {_caller, _requests}, state) do
-    {:reply,
-     {:error,
-      "request the data first with AccessGrid#get!({#{x},#{y}}) or maybe too much time elapsed since get! was called"},
-     state}
-  end
-
   defp handle_check_timeout({x, y}, pid, monitor_ref, {{pid, monitor_ref}, []}, state) do
     Process.demonitor(monitor_ref, [:flush])
     {:noreply, %{state | caller: Grid.put(state.caller, x, y, nil)}}
@@ -182,6 +215,62 @@ defmodule Ximula.AccessGrid do
 
   defp handle_check_timeout(_pos, _pid, _monitor_ref, _caller_requests, state) do
     {:noreply, state}
+  end
+
+  defp validate_and_demonitor(item, nil, _pid) do
+    %{item | valid: false}
+  end
+
+  defp validate_and_demonitor(item, {pid, monitor_ref}, pid) do
+    Process.demonitor(monitor_ref, [:flush])
+    %{item | caller: nil}
+  end
+
+  defp validate_and_demonitor(item, {_other_pid, _}, _caller_pid) do
+    %{item | valid: false}
+  end
+
+  defp set_data(%{position: position, data: data} = item, agent: agent, valid: true) do
+    update_data(agent, position, data)
+    item
+  end
+
+  defp set_data(%{position: position} = item, agent: agent, valid: false) do
+    %{item | data: get_data(agent, position)}
+  end
+
+  defp set_requests(%{requests: []} = item, max_duration: _) do
+    item
+  end
+
+  defp set_requests(%{position: position, data: data, requests: requests} = item,
+         max_duration: max_duration
+       ) do
+    [{{c_pid, _} = next_caller, next_monitor_ref, _position} | remaining] = requests
+    :ok = GenServer.reply(next_caller, data)
+    start_check_timeout(position, next_caller, next_monitor_ref, max_duration)
+    %{item | caller: {c_pid, next_monitor_ref}, requests: remaining}
+  end
+
+  defp merge_update(state, %{position: {x, y}} = item) do
+    Map.merge(state, %{
+      caller: Grid.put(state.caller, x, y, item.caller),
+      requests: Grid.put(state.requests, x, y, item.requests)
+    })
+  end
+
+  defp set_errors(errors, _position, true), do: errors
+  defp set_errors(errors, position, false), do: [position | errors]
+
+  defp update_reply([], _pid, state), do: {:reply, :ok, state}
+
+  defp update_reply(errors, pid, state) do
+    msg = Enum.map(errors, fn {x, y} -> "{#{x}, #{y}}" end) |> Enum.join(", ")
+
+    msg =
+      "request the data first with AccessGrid#get! #{msg} or maybe too much time elapsed since get! was called"
+
+    {:reply, {:error, msg}, state |> remove_caller(pid) |> remove_request(pid)}
   end
 
   defp remove_caller(state, pid) do
@@ -223,14 +312,6 @@ defmodule Ximula.AccessGrid do
 
   defp get_data(agent, func) when is_function(func) do
     Agent.get(agent, func)
-  end
-
-  defp update_data(agent, {x, y}, func) when is_function(func) do
-    :ok =
-      Agent.update(agent, fn grid ->
-        cell = Grid.get(grid, x, y)
-        Grid.put(grid, x, y, func.(cell))
-      end)
   end
 
   defp update_data(agent, {x, y}, data) do

@@ -8,6 +8,8 @@ defmodule Ximula.AccessProxy do
   :ok = AccessProxy.update(data) # releases the lock and will reply to the next client in line with the updated data
   {:error, msg} = AccessProxy.update(data) # if between get! and update too much time elapsed (default 5 sec)
 
+  NOTE: get! and update must be called within the same process
+
   Example:
   {:ok, pid} = Agent.start_link(fn -> 42 end)
 
