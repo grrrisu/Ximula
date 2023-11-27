@@ -72,7 +72,7 @@ defmodule Ximula.AccessGrid do
   end
 
   def release(position, server \\ __MODULE__) when is_tuple(position) do
-    GenServer.call(server, {:update, & &1})
+    GenServer.call(server, {:update, position, & &1})
   end
 
   def init(opts) do
@@ -223,6 +223,14 @@ defmodule Ximula.AccessGrid do
 
   defp get_data(agent, func) when is_function(func) do
     Agent.get(agent, func)
+  end
+
+  defp update_data(agent, {x, y}, func) when is_function(func) do
+    :ok =
+      Agent.update(agent, fn grid ->
+        cell = Grid.get(grid, x, y)
+        Grid.put(grid, x, y, func.(cell))
+      end)
   end
 
   defp update_data(agent, {x, y}, data) do

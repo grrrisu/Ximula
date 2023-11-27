@@ -175,25 +175,25 @@ defmodule Ximula.AccessGridTest do
       assert 14 == AccessGrid.get({1, 2})
     end
 
-    #   test "release exclusive lock", %{grid: grid} do
-    #     result =
-    #       [
-    #         Task.async(fn ->
-    #           AccessGrid.get!(grid)
-    #           Process.sleep(100)
-    #           :ok = AccessGrid.release(grid)
-    #           AccessGrid.get()
-    #         end),
-    #         Task.async(fn ->
-    #           value = AccessGrid.get!(grid)
-    #           Process.sleep(100)
-    #           :ok = AccessGrid.update(grid, value + 1)
-    #           AccessGrid.get()
-    #         end)
-    #       ]
-    #       |> Enum.map(&Task.await(&1))
+    test "release exclusive lock", %{grid: grid} do
+      result =
+        [
+          Task.async(fn ->
+            AccessGrid.get!({1, 2}, grid)
+            Process.sleep(100)
+            :ok = AccessGrid.release({1, 2}, grid)
+            AccessGrid.get({1, 2})
+          end),
+          Task.async(fn ->
+            value = AccessGrid.get!({1, 2}, grid)
+            Process.sleep(100)
+            :ok = AccessGrid.update({1, 2}, value + 1, grid)
+            AccessGrid.get({1, 2})
+          end)
+        ]
+        |> Enum.map(&Task.await(&1))
 
-    #     assert [42, 43] = result
-    #   end
+      assert [12, 13] = result
+    end
   end
 end
