@@ -1,16 +1,31 @@
 defmodule Ximula.AccessGrid do
   @moduledoc """
   Keeps updates on an agent in sequence to avoid race conditions by overwriting data,
-  while remaining responsive to just read operations.
+  while remaining responsive to read operations.
 
-  data = AccessGrid.get!({1,2}) # blocks until an other exclusive client updates the data
-  data = AccessGrid.get({1,2}) # never blocks
-  :ok = AccessGrid.update({1,2}, data) # releases the lock and will reply to the next client in line with the updated data
-  {:error, msg} = AccessGrid.update({1,2}, data) # if between get! and update too much time elapsed (default 5 sec)
+  data = AccessGrid.get!({1,2}, grid) # blocks until an other exclusive client updates the data
+  data = AccessGrid.get({1,2}, grid) # never blocks
+  :ok = AccessGrid.update({1,2}, data, grid) # releases the lock and will reply to the next client in line with the updated data
+  {:error, msg} = AccessGrid.update({1,2}, data, grid) # if between get! and update too much time elapsed (default 5 sec)
 
   different updates
 
-  Acc
+  list = AccessGrid.get_list!([{0, 0}, {1, 1}], grid)
+  # do something with the values
+
+  update_all writes all changes back one by one, allowing others to read in between
+
+  :ok = AccessGrid.update_all([{{0, 0}, 100}, {{1, 1}, 111}], grid)
+
+  update_all is the same as mapping over each update
+
+  Enum.map([{{0, 0}, 100}, {{1, 1}, 111}], fn {position, data} -> AccessGrid.update(position, data, grid) end)
+
+  update:all! writes all changes back at once without any interruption (like a transaction)
+  use this if for example two fields depend on each like movements
+  :ok = AccessGrid.update_all!([{{0, 0}, 100}, {{1, 1}, 111}], grid)
+  # moving a pawn from {0,0} to {1,1}
+  :ok = AccessGrid.update_all!([{{0, 0}, %{pawn: nil}}, {{1, 1}, %{pawn: pawn}}], grid)
 
   NOTE: get! and update must be called within the same process
 
@@ -70,26 +85,26 @@ defmodule Ximula.AccessGrid do
     GenServer.call(server, {:get!, position})
   end
 
+  # depending if some items of the list are occupied, this function is faster or slower
   def get_list!(list, server \\ __MODULE__) when is_list(list) do
     Enum.map(list, &get!(&1, server))
   end
 
   # func must return a list of [position]
-  # depending if some items of the list are occupied, this function is faster or slower
   def filter!(func, server \\ __MODULE__) when is_function(func) do
     get(func, server)
     |> get_list!(server)
   end
 
   @doc """
-  needs previously called get!
+  rquires get! to be called first
   """
   def update(position, data, server \\ __MODULE__) when is_tuple(position) do
     GenServer.call(server, {:update_all!, [{position, data}]})
   end
 
   @doc """
-  updates the list one by one, allowing read actions inbetween
+  updates the list one at the time, allowing read actions in between
   list of [{position, data}]
   """
   def update_all(list, server \\ __MODULE__) when is_list(list) do
@@ -98,7 +113,7 @@ defmodule Ximula.AccessGrid do
 
   @doc """
   updates the list at once, without interruption.
-  if the update fails, the locks will be removed, while the original state kept
+  if the update fails, the locks will be removed, while the original state is kept
   list of [{position, data}]
   """
   def update_all!(list, server \\ __MODULE__) when is_list(list) do
