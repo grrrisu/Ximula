@@ -9,7 +9,7 @@ defmodule Ximula.AccessDataTest do
     grid = start_supervised!({AccessData, [data: data]})
     supervisor = start_link_supervised!(Task.Supervisor)
 
-    %{grid: grid, supervisor: supervisor}
+    %{data: data, grid: grid, supervisor: supervisor}
   end
 
   def get({x, y}, grid) do
@@ -168,10 +168,10 @@ defmodule Ximula.AccessDataTest do
       assert [ok: 13, exit: :upps, ok: 14] = result
     end
 
-    test "timeouted request should not be able to update", %{agent: agent} do
+    test "timeouted request should not be able to update", %{data: data} do
       grid =
         start_supervised!(
-          {AccessData, [name: :fast_access, agent: agent, max_duration: 50]},
+          {AccessData, [name: :fast_access, data: data, max_duration: 50]},
           id: :fast_access
         )
 
@@ -195,26 +195,48 @@ defmodule Ximula.AccessDataTest do
       assert 14 == get({1, 2}, grid)
     end
 
-    # test "release exclusive lock", %{grid: grid} do
-    #   result =
-    #     [
-    #       Task.async(fn ->
-    #         lock({1, 2}, grid)
-    #         Process.sleep(100)
-    #         :ok = AccessData.release({1, 2}, grid)
-    #         get({1, 2}, grid)
-    #       end),
-    #       Task.async(fn ->
-    #         value = lock({1, 2}, grid)
-    #         Process.sleep(100)
-    #         :ok = update({1, 2}, value + 1, grid)
-    #         get({1, 2}, grid)
-    #       end)
-    #     ]
-    #     |> Enum.map(&Task.await(&1))
+    test "release a lock", %{grid: grid} do
+      result =
+        [
+          Task.async(fn ->
+            lock({1, 2}, grid)
+            Process.sleep(100)
+            :ok = AccessData.release([{1, 2}], grid)
+            get({1, 2}, grid)
+          end),
+          Task.async(fn ->
+            Process.sleep(10)
+            value = lock({1, 2}, grid)
+            Process.sleep(10)
+            :ok = update({1, 2}, value + 1, grid)
+            get({1, 2}, grid)
+          end)
+        ]
+        |> Enum.map(&Task.await(&1))
 
-    #   assert [12, 13] = result
-    # end
+      assert [12, 13] = result
+    end
+
+    test "release not required lock", %{grid: grid} do
+      result =
+        [
+          Task.async(fn ->
+            lock_list([{0, 2}, {1, 2}], grid)
+            Process.sleep(100)
+            {:error, _msg} = AccessData.release([{0, 0}, {1, 2}], grid)
+            get({1, 2}, grid)
+          end),
+          Task.async(fn ->
+            lock_list([{0, 2}, {1, 2}], grid)
+            Process.sleep(100)
+            :ok = update_list([{{0, 2}, 200}, {{1, 2}, 210}], grid)
+            get({1, 2}, grid)
+          end)
+        ]
+        |> Enum.map(&Task.await(&1))
+
+      assert [12, 210] = result
+    end
   end
 
   describe "update_list" do

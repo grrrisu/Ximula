@@ -45,8 +45,8 @@ defmodule Ximula.AccessData do
 
   @doc """
   Example
-  data = AccessData.lock({1,2}, grid, &Grid.get(&1, &2))
-  :ok = AccessData.lock({1,2}, grid)
+  [data, data] = AccessData.lock([{0, 2}, {1,2}], grid, &Grid.get(&1, &2))
+  [:ok, :ok] = AccessData.lock([{0, 2}, {1,2}], grid)
   """
   def lock_list(keys, server \\ __MODULE__, fun \\ fn _, _ -> :ok end) when is_list(keys) do
     Enum.map(keys, &lock(&1, server, fun))
@@ -54,8 +54,8 @@ defmodule Ximula.AccessData do
 
   @doc """
   Example
-  :ok = AccessData.lock({1,2}, grid)
-  AccessData.update({1,2}, &Grid.update(&1, &2, new_data))
+  :ok = AccessData.lock([{0,2}, {1,2}], grid)
+  AccessData.update([{1,2}], &Grid.update(&1, &2, new_data))
   """
   def update(key, data, server \\ __MODULE__, fun) do
     update_list([{key, data}], server, fun)
@@ -68,6 +68,10 @@ defmodule Ximula.AccessData do
   """
   def update_list(keys, server \\ __MODULE__, fun) do
     GenServer.call(server, {:update_list, keys, fun})
+  end
+
+  def release(keys, server \\ __MODULE__) do
+    GenServer.call(server, {:release, keys})
   end
 
   @spec init(nil | maybe_improper_list() | map()) ::
@@ -96,85 +100,36 @@ defmodule Ximula.AccessData do
     )
   end
 
-  def handle_call({:update_list, list, fun}, {pid, _} = from, state) do
+  def handle_call({:update_list, list, fun}, {pid, _}, state) do
     {errors, caller} =
       Enum.reduce(list, {[], state.caller}, fn {key, _}, {errors, caller} ->
-        case Map.get(caller, key) do
-          nil ->
-            {[key | errors], caller}
-
-          {c_pid, monitor_ref} when pid == c_pid ->
-            Process.demonitor(monitor_ref, [:flush])
-            {errors, Map.put(caller, key, nil)}
-
-          {_other_pid, _} ->
-            {[key | errors], caller}
-        end
+        demonitor_caller(key, pid, caller, errors)
       end)
 
-    data =
-      if Enum.empty?(errors) do
-        Enum.reduce(list, state.data, fn {key, value}, data ->
-          fun.(data, key, value)
-        end)
-      else
-        state.data
-      end
+    data = set_data(list, state.data, fun, errors)
 
     {caller, requests} =
       Enum.reduce(list, {caller, state.requests}, fn {key, _}, {caller, requests} ->
-        req = Map.get(requests, key)
-
-        if req && Enum.any?(req) do
-          {c, r} = reply_to_next_caller(key, data, req, state.max_duration)
-          {Map.put(caller, key, c), Map.put(requests, key, r)}
-        else
-          {caller, requests}
-        end
+        set_requests(key, data, caller, requests, state.max_duration)
       end)
 
     state = %{state | data: data, caller: caller, requests: requests}
     update_reply(errors, pid, state)
   end
 
-  # def handle_call({:_update_list, list, fun}, {pid, _} = from, state) do
-  #   # errors = validate_and_demonitor(list, pid)
-  #   # data = reduce(state.data(valid))
-  #   # map(next_caller(key, fun, caller, requests, duration))
-  #   # reduce(state and errors)
-  #   # reply
+  def handle_call({:release, keys}, {pid, _}, state) do
+    {errors, caller} =
+      Enum.reduce(keys, {[], state.caller}, fn key, {errors, caller} ->
+        demonitor_caller(key, pid, caller, errors)
+      end)
 
-  #   list
-  #   |> Enum.map(fn {key, new_data} ->
-  #     %{
-  #       valid: true,
-  #       key: key,
-  #       fun: &fun.(&1, key, new_data),
-  #       caller: Map.get(state.caller, key),
-  #       requests: Map.get(state.requests, key, [])
-  #     }
-  #   end)
-  #   |> Enum.reduce({%{valid: true, errors: []}, []}, fn %{caller: caller} = item,
-  #                                                       {%{valid: valid, errors: errors}, items} ->
-  #     item = validate_and_demonitor(item, caller, pid)
-  #     errors = if item.valid, do: errors, else: [item.key | errors]
-  #     {%{valid: valid && item.valid, errors: errors}, [item | items]}
-  #   end)
-  #   |> then(fn {%{valid: valid} = acc, list} ->
-  #     {Map.put(acc, :data, Enum.reduce(list, state.data, &set_data(&1, &2, valid: valid))), list}
-  #   end)
-  #   |> then(fn {%{data: data} = acc, list} ->
-  #     {acc, Enum.map(list, &set_requests(&1, data, state.max_duration))}
-  #   end)
-  #   |> then(fn {%{data: data, errors: errors}, list} ->
-  #     {Enum.reduce(list, %{state | data: data}, fn item, state ->
-  #        merge_update(state, item)
-  #      end), errors}
-  #   end)
-  #   |> then(fn {state, errors} ->
-  #     update_reply(errors, pid, state)
-  #   end)
-  # end
+    {caller, requests} =
+      Enum.reduce(keys, {caller, state.requests}, fn key, {caller, requests} ->
+        set_requests(key, state.data, caller, requests, state.max_duration)
+      end)
+
+    update_reply(errors, pid, %{state | caller: caller, requests: requests})
+  end
 
   def handle_info({:check_timeout, key, {pid, _ref}, monitor_ref}, state) do
     caller = Map.get(state.caller, key)
@@ -217,11 +172,16 @@ defmodule Ximula.AccessData do
     {:noreply, %{state | caller: Map.put(state.caller, key, nil)}}
   end
 
-  defp handle_check_timeout(key, pid, monitor_ref, {{pid, monitor_ref}, _requests}, state) do
+  defp handle_check_timeout(key, pid, monitor_ref, {{pid, monitor_ref}, requests}, state) do
     Process.demonitor(monitor_ref, [:flush])
-    requests = Map.get(state.requests, key)
     {next_caller, requests} = reply_to_next_caller(key, state.data, requests, state.max_duration)
-    {:noreply, %{state | caller: Map.put(state.caller, key, next_caller), requests: requests}}
+
+    {:noreply,
+     %{
+       state
+       | caller: Map.put(state.caller, key, next_caller),
+         requests: Map.put(state.requests, key, requests)
+     }}
   end
 
   defp handle_check_timeout(_key, _pid, _monitor_ref, _caller_requests, state) do
@@ -236,40 +196,19 @@ defmodule Ximula.AccessData do
     )
   end
 
-  # defp validate_and_demonitor(item, nil, _pid) do
-  #   %{item | valid: false}
-  # end
+  defp demonitor_caller(key, pid, caller, errors) do
+    case Map.get(caller, key) do
+      nil ->
+        {[key | errors], caller}
 
-  # defp validate_and_demonitor(item, {pid, monitor_ref}, pid) do
-  #   Process.demonitor(monitor_ref, [:flush])
-  #   %{item | caller: nil}
-  # end
+      {c_pid, monitor_ref} when pid == c_pid ->
+        Process.demonitor(monitor_ref, [:flush])
+        {errors, Map.put(caller, key, nil)}
 
-  # defp validate_and_demonitor(item, {_other_pid, _}, _caller_pid) do
-  #   %{item | valid: false}
-  # end
-
-  # defp set_data(%{fun: fun} = item, data, valid: true), do: fun.(data)
-  # defp set_data(_item, data, valid: false), do: data
-
-  # defp set_requests(%{caller: nil, requests: []} = item, _, _), do: item
-
-  # defp set_requests(%{key: key, caller: nil, requests: requests} = item, data, max_duration) do
-  #   {caller, requests} = reply_to_next_caller(key, data, requests, max_duration)
-  #   %{item | caller: caller, requests: requests}
-  # end
-
-  # defp set_requests(item, _, _), do: item
-
-  # defp merge_update(state, %{key: key} = item) do
-  #   Map.merge(state, %{
-  #     caller: Map.put(state.caller, key, item.caller),
-  #     requests: Map.put(state.requests, key, item.requests)
-  #   })
-  # end
-
-  defp set_errors(errors, _key, true), do: errors
-  defp set_errors(errors, key, false), do: [key | errors]
+      {_other_pid, _} ->
+        {[key | errors], caller}
+    end
+  end
 
   defp update_reply([], _pid, state), do: {:reply, :ok, state}
 
@@ -281,6 +220,25 @@ defmodule Ximula.AccessData do
 
     {:reply, {:error, msg}, state |> remove_caller(pid) |> remove_request(pid)}
   end
+
+  defp set_requests(key, data, caller, requests, max_duration) do
+    req = Map.get(requests, key)
+
+    if req && Enum.any?(req) do
+      {c, r} = reply_to_next_caller(key, data, req, max_duration)
+      {Map.put(caller, key, c), Map.put(requests, key, r)}
+    else
+      {caller, requests}
+    end
+  end
+
+  defp set_data(list, data, fun, []) do
+    Enum.reduce(list, data, fn {key, value}, data ->
+      fun.(data, key, value)
+    end)
+  end
+
+  defp set_data(_list, data, _fun, _errors), do: data
 
   defp reply_to_next_caller(key, data, requests, max_duration) do
     [{{pid, _ref} = next_caller, monitor_ref, fun} | remaining] = requests
@@ -294,9 +252,9 @@ defmodule Ximula.AccessData do
     |> Enum.filter(&caller_eql(&1, pid))
     |> Enum.map(fn {key, _} ->
       case Map.get(state.requests, key) do
-        nil -> {key, {nil, state.requests}}
-        [] -> {key, {nil, state.requests}}
-        _ -> {key, reply_to_next_caller(key, state.data, state.requests, state.max_duration)}
+        nil -> {key, {nil, []}}
+        [] -> {key, {nil, []}}
+        req -> {key, reply_to_next_caller(key, state.data, req, state.max_duration)}
       end
     end)
     |> Enum.reduce(state, fn {key, {next_caller, requests}}, state ->
