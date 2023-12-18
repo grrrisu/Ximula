@@ -224,7 +224,7 @@ defmodule Ximula.AccessData do
   defp update_reply([], _pid, state), do: {:reply, :ok, state}
 
   defp update_reply(errors, pid, state) do
-    msg = Enum.map(errors, fn {x, y} -> "{#{x}, #{y}}" end) |> Enum.join(", ")
+    msg = Enum.map_join(errors, ", ", fn {x, y} -> "{#{x}, #{y}}" end)
 
     msg =
       "request the data first with AccessGrid#lock #{msg} or maybe too much time elapsed since lock was called"
