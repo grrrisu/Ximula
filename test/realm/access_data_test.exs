@@ -280,7 +280,7 @@ defmodule Ximula.AccessDataTest do
       assert 111 == get({1, 1}, grid)
     end
 
-    test "get! and update must be in the same process", %{grid: grid} do
+    test "lock and update must be in the same process", %{grid: grid} do
       data =
         [{0, 0}, {0, 1}, {0, 2}]
         |> Enum.map(fn item -> Task.async(fn -> lock(item, grid) end) end)

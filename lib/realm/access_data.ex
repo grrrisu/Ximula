@@ -1,16 +1,29 @@
 defmodule Ximula.AccessData do
   @moduledoc """
+  Keeps updates on an agent in sequence to avoid race conditions by overwriting data,
+  while remaining responsive to just read operations.
 
-  could this also be achieved with Mutex
+  data = AccessProxy.lock(key) # blocks until an other client updates the data
+  data = AccessProxy.get_by(&Map.get(&1, key)) # never blocks
+  :ok = AccessProxy.update(key, Map.put(&1, key, new_data)) # releases the lock and will reply to the next client in line with the updated data
+  {:error, msg} = AccessProxy.update(key, Map.put(&1, key, new_data)) # if between lock and update too much time elapsed (default 5 sec)
 
-  def get_by
+  NOTE: lock and update must be called within the same process
 
-  sync def lock
+  Example:
+  {:ok, pid} = AccessData.start_link(data: %{a: 1, b: 2, c: 3})
 
-  sync def update
-
+  [:a, :a, :b, :b, :c, :c]
+  |> Enum.map(fn _n ->
+      Task.async(fn ->
+        value = AccessData.lock(n, &Map.get(&1, n))
+        Process.sleep(1_000)
+        :ok = AccessData.update(n, value + 1, &Map.put(&1, &2, &3))
+      end)
+    end)
+  |> Task.await_many()
+  %{a: 3, b: 4, c: 5} = AccessData.get_by(& &1)
   """
-
   use GenServer
 
   # milliseconds
@@ -74,8 +87,6 @@ defmodule Ximula.AccessData do
     GenServer.call(server, {:release, keys})
   end
 
-  @spec init(nil | maybe_improper_list() | map()) ::
-          {:ok, %{caller: %{}, data: any(), max_duration: any(), requests: %{}}}
   def init(opts) do
     {:ok,
      %{
@@ -216,7 +227,7 @@ defmodule Ximula.AccessData do
     msg = Enum.map(errors, fn {x, y} -> "{#{x}, #{y}}" end) |> Enum.join(", ")
 
     msg =
-      "request the data first with AccessGrid#get! #{msg} or maybe too much time elapsed since get! was called"
+      "request the data first with AccessGrid#lock #{msg} or maybe too much time elapsed since lock was called"
 
     {:reply, {:error, msg}, state |> remove_caller(pid) |> remove_request(pid)}
   end
