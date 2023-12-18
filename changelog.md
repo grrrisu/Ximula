@@ -1,6 +1,6 @@
 # Changelog
 
-## dev
+## 0.2.0
 
 Grid:
 
@@ -11,6 +11,7 @@ Grid:
 AccessProxy:
 
 - `AccessProxy.release` the lock and allow the next to continue
+- `AccessData` Agent-like module that uses keys to lock part of its data
 
 Sim:
 
