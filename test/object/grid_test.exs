@@ -30,7 +30,14 @@ defmodule Ximula.GridTest do
     assert 3 == Grid.get(grid, 2, 2)
   end
 
-  test "set and read from grid" do
+  test "set and read from grid with coordination tuple" do
+    grid = Grid.create(2, 3)
+    assert nil == Grid.get(grid, {1, 2})
+    new_grid = Grid.put(grid, {1, 2}, "value")
+    assert "value" == Grid.get(new_grid, {1, 2})
+  end
+
+  test "set and read from grid with coordination arguments" do
     grid = Grid.create(2, 3)
     assert nil == Grid.get(grid, 1, 2)
     new_grid = Grid.put(grid, 1, 2, "value")
