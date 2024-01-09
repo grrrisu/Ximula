@@ -8,6 +8,8 @@ defmodule Ximula.Torus do
   defdelegate width(grid), to: Grid
   defdelegate height(grid), to: Grid
 
+  def get(grid, {x, y}), do: get(grid, x, y)
+
   def get(grid, x, y) when is_integer(x) and x >= map_size(grid) do
     get(grid, x - width(grid), y)
   end
@@ -25,6 +27,8 @@ defmodule Ximula.Torus do
   end
 
   defdelegate get(grid, x, y), to: Grid
+
+  def put(grid, {x, y}, value), do: put(grid, x, y, value)
 
   def put(grid, x, y, value) when is_integer(x) and x >= map_size(grid) do
     put(grid, x - width(grid), y, value)

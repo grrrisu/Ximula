@@ -34,6 +34,8 @@ defmodule Ximula.Grid do
     end)
   end
 
+  def get(grid, {x, y}), do: get(grid, x, y)
+
   def get(nil, _x, _y), do: {:error, "grid is nil"}
 
   def get(%{0 => columns} = grid, x, y)
@@ -49,6 +51,8 @@ defmodule Ximula.Grid do
   def get(_grid, x, y) do
     {:error, "only integers are allowed as coordinates, x: #{x}, y: #{y}"}
   end
+
+  def put(grid, {x, y}, value), do: put(grid, x, y, value)
 
   def put(%{0 => columns} = grid, x, y, value)
       when x >= 0 and x < map_size(grid) and y >= 0 and y < map_size(columns) do
