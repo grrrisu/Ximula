@@ -1,5 +1,11 @@
 # Changelog
 
+## dev
+
+Grid:
+
+- allow accessing a grid with a tuple of coordination values `Grid.get(grid, {x, y})`
+
 ## 0.2.0
 
 Grid:
