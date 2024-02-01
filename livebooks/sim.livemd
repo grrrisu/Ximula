@@ -34,7 +34,7 @@ end
 defmodule Sim.Data do
   use Agent
 
-  alias Ximula.Torus
+  alias Ximula.{Grid, Torus}
   alias Sim.Field
 
   def start_link(size) do
@@ -57,14 +57,11 @@ defmodule Sim.Data do
   end
 
   def get_all_fields(pid) do
-    Agent.get(pid, fn grid ->
-      Enum.map(grid, fn {_x, col} ->
-        Enum.map(col, fn {_y, value} ->
-          value
-        end)
-      end)
-      |> List.flatten()
-    end)
+    Agent.get(pid, &Grid.values(&1))
+  end
+
+  def positions(pid) do
+    Agent.get(pid, &Grid.map(fn x, y, _ -> {x, y} end))
   end
 
   def set_fields(fields, pid) do
@@ -75,23 +72,43 @@ defmodule Sim.Data do
       end)
     end)
   end
+
+  def update_field({x, y}, field, pid) do
+    Agnet.update(pid, fn gried -> Grid.update(x, y, field) end)
+  end
 end
 ```
 
 ```elixir
 {:ok, map_pid} = Sim.Data.start_link(50)
-proxy = Ximula.AccessProxy.start_link(agent: map_pid, name: :sim_data)
-Ximula.AccessProxy.get(:sim_data)
+{:ok, proxy} = Ximula.AccessData.start_link(data: map_pid, name: :sim_proxy)
+Ximula.AccessData.get_by(proxy, &Sim.Data.get_field(0, 0, &1))
 ```
 
 ## Simulations
 
 ```elixir
 defmodule Sim.Vegetation do
+  alias Sim.Data
+  alias Ximula.AccessData
+
+  def change(position, world) do
+    position
+    |> AccessData.lock(world, &Data.get_field(&1, &2))
+    |> sim()
+    |> update(position, world)
+  end
+
   def sim(field) do
     # Process.sleep(5)
     if field.position == {13, 13}, do: raise("Sim Error")
     put_in(field.vegetation.value, 1)
+  end
+
+  def update(field, position, data) do
+    AccessData.update(position, field, data, fn data, position, value ->
+      Data.update_field(position, value, data)
+    end)
   end
 end
 
@@ -127,6 +144,8 @@ end
 defmodule FieldSimulator do
   alias Ximula.Simulator
   alias Ximula.Sim.Queue
+  alias Ximula.AccessData
+  alias Sim.Data
 
   @simulations [
     Sim.Vegetation,
@@ -136,7 +155,7 @@ defmodule FieldSimulator do
     Sim.Transport
   ]
 
-  def sim(%Queue{} = queue, opts) do
+  def run_queue(%Queue{} = queue, opts) do
     Enum.map(@simulations, &sim_simulation(queue, &1, opts))
     |> aggregate_results(queue.name)
     |> notify_sum()
@@ -144,8 +163,8 @@ defmodule FieldSimulator do
 
   def sim_simulation(queue, simulation, opts) do
     Simulator.benchmark(fn ->
-      get_data(opts[:proxy], queue.name)
-      |> Simulator.sim({simulation, :sim, []}, & &1.position)
+      get_positions(opts[:proxy], queue.name)
+      |> Simulator.sim({simulation, :change, [opts[:proxy]]}, & &1.position)
       |> handle_success(opts[:proxy])
       |> handle_failed(opts[:proxy])
       |> summarize(simulation)
@@ -153,25 +172,12 @@ defmodule FieldSimulator do
     end)
   end
 
-  def get_data(proxy, name) do
-    Ximula.AccessProxy.get!(proxy, fn grid ->
-      Ximula.Grid.filter(grid, fn _x, _y, field ->
-        field.priority == name
-      end)
-    end)
+  def get_positions(proxy, _name) do
+    AccessData.get_by(proxy, &Data.positions(&1))
   end
 
-  def set_data(proxy, data) do
-    Ximula.AccessProxy.update(proxy, fn grid ->
-      Enum.reduce(data, grid, fn field, acc ->
-        {x, y} = field.position
-        Ximula.Torus.put(acc, x, y, field)
-      end)
-    end)
-  end
-
-  def handle_success(%{ok: fields} = results, proxy) do
-    :ok = set_data(proxy, fields)
+  def handle_success(%{ok: fields} = results, _proxy) do
+    IO.puts("successful simulations: #{Enum.count(fields)}")
     results
   end
 
@@ -228,19 +234,19 @@ Ximula.Sim.Loop.start_link(sim_args: [proxy: :sim_data])
 ```elixir
 Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :high,
-  func: {FieldSimulator, :sim, [proxy: :sim_data]},
+  func: {FieldSimulator, :run_queue, [proxy: :sim_proxy]},
   interval: 500
 })
 
 Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :normal,
-  func: &FieldSimulator.sim/2,
+  func: &FieldSimulator.run_queue/2,
   interval: 2_000
 })
 
 Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :low,
-  func: &FieldSimulator.sim/2,
+  func: &FieldSimulator.run_queue/2,
   interval: 10_000
 })
 ```
