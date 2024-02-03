@@ -67,8 +67,8 @@ defmodule Ximula.AccessData do
 
   @doc """
   Example
-  :ok = AccessData.lock([{0,2}, {1,2}], grid)
-  AccessData.update([{1,2}], &Grid.update(&1, &2, new_data))
+  :ok = AccessData.lock({0,2}, grid)
+  AccessData.update({1,2}, new_data, &Grid.put(&1, &2, &3))
   """
   def update(key, data, server \\ __MODULE__, fun) do
     update_list([{key, data}], server, fun)
@@ -76,8 +76,8 @@ defmodule Ximula.AccessData do
 
   @doc """
   Example
-  :ok = AccessData.lock({1,2}, grid)
-  AccessData.update({1,2}, &Grid.update(&1, &2, new_data))
+  :ok = AccessData.lock_list([{0,2}, {1,2}], grid)
+  AccessData.update_listr([{{0,2}, new_data}, {{1,2}, new_data}], &Grid.put(&1, &2, &3))
   """
   def update_list(keys, server \\ __MODULE__, fun) do
     GenServer.call(server, {:update_list, keys, fun})
