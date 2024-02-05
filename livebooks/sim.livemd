@@ -84,6 +84,8 @@ defmodule Sim.Vegetation do
     |> Data.lock_field(world)
     |> sim()
     |> Data.update_field(position, world)
+
+    position
   end
 
   def sim(field) do
@@ -94,26 +96,25 @@ defmodule Sim.Vegetation do
 end
 
 defmodule Sim.Herbivore do
-  def sim(field) do
-    # Process.sleep(5)
-    field
+  def change(position, _world) do
+    position
   end
 end
 
 defmodule Sim.Predator do
-  def sim(_field) do
+  def change(_field, _world) do
     :no_change
   end
 end
 
 defmodule Sim.Factory do
-  def sim(_field) do
+  def change(_field, _world) do
     :no_change
   end
 end
 
 defmodule Sim.Transport do
-  def sim(_field) do
+  def change(_field, _world) do
     :no_change
   end
 end
@@ -173,7 +174,7 @@ defmodule FieldSimulator do
   def summarize(%{ok: success, exit: failed}, simulation) do
     %{
       simulation: simulation,
-      ok: Enum.map(success, & &1.position),
+      ok: success,
       error:
         Enum.map(failed, fn {id, {exception, stacktrace}} ->
           {id, Exception.normalize(:exit, exception, stacktrace) |> Exception.message()}
