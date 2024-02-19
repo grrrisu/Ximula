@@ -68,7 +68,7 @@ end
 ```
 
 ```elixir
-data = Sim.Data.create(20)
+data = Sim.Data.create(10)
 {:ok, proxy} = Ximula.AccessData.start_link(data: data, name: :sim_data)
 Sim.Data.get_field({0, 0}, proxy)
 ```
@@ -90,7 +90,7 @@ defmodule Sim.Vegetation do
 
   def sim(field) do
     # Process.sleep(5)
-    if field.position == {13, 13}, do: raise("Sim Error")
+    if field.position == {9, 9}, do: raise("Sim Error")
     put_in(field.vegetation.value, 1)
   end
 end
@@ -102,20 +102,23 @@ defmodule Sim.Herbivore do
 end
 
 defmodule Sim.Predator do
-  def change(_field, _world) do
-    :no_change
+  def change(position, _world) do
+    Process.sleep(10)
+    position
   end
 end
 
 defmodule Sim.Factory do
-  def change(_field, _world) do
-    :no_change
+  def change(position, _world) do
+    Process.sleep(20)
+    position
   end
 end
 
 defmodule Sim.Transport do
-  def change(_field, _world) do
-    :no_change
+  def change(position, _world) do
+    Process.sleep(50)
+    position
   end
 end
 ```
@@ -131,8 +134,8 @@ defmodule FieldSimulator do
   @simulations [
     Sim.Vegetation,
     Sim.Herbivore,
-    Sim.Factory,
     Sim.Predator,
+    Sim.Factory,
     Sim.Transport
   ]
 
@@ -146,7 +149,6 @@ defmodule FieldSimulator do
     Simulator.benchmark(fn ->
       get_positions(opts[:proxy], queue.name)
       |> Simulator.sim({simulation, :change, [opts[:proxy]]}, & &1)
-      |> dbg()
       |> handle_success(opts[:proxy])
       |> handle_failed(opts[:proxy])
       |> summarize(simulation)
@@ -217,7 +219,7 @@ Ximula.Sim.Loop.start_link(sim_args: [proxy: :sim_data])
 Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :high,
   func: {FieldSimulator, :run_queue, [proxy: :sim_data]},
-  interval: 500
+  interval: 2_000
 })
 
 # Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
@@ -234,9 +236,12 @@ Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
 ```
 
 ```elixir
+require Logger
+Logger.info("START!")
 Ximula.Sim.Loop.start_sim()
-Process.sleep(5_000)
+Process.sleep(10_000)
 Ximula.Sim.Loop.stop_sim()
+Logger.info("END!")
 ```
 
 ```elixir
