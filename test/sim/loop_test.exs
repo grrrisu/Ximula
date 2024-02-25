@@ -21,25 +21,25 @@ defmodule Ximula.Sim.LoopTest do
 
     test "add queue", %{loop: loop} do
       assert [] == Loop.get_queues(loop)
-      :ok = Loop.add_queue(%Queue{name: "first"})
+      :ok = Loop.add_queue(loop, %Queue{name: "first"})
       assert [queue] = Loop.get_queues(loop)
       assert "first" == queue.name
     end
 
-    test "set queue", %{loop: loop} do
+    test "add multiple queues", %{loop: loop} do
       assert [] == Loop.get_queues(loop)
-      :ok = Loop.add_queue(%Queue{name: "first"})
-      :ok = Loop.set_queue(%Queue{name: "second"})
+      :ok = Loop.add_queue(loop, %Queue{name: "first"})
+      :ok = Loop.add_queue(loop, %Queue{name: "second"})
       assert 2 == Loop.get_queues(loop) |> Enum.count()
       assert %Queue{name: "second"} = Loop.get_queues(loop) |> Enum.find(&(&1.name == "second"))
     end
 
     test "replace queue", %{loop: loop} do
       assert [] == Loop.get_queues(loop)
-      :ok = Loop.add_queue(%Queue{name: "first", interval: 5})
-      :ok = Loop.set_queue(%Queue{name: "first", interval: 10})
+      :ok = Loop.add_queue(loop, %Queue{name: "first", interval: 5})
+      :ok = Loop.add_queue(loop, %Queue{name: "first", interval: 10})
       assert 1 == Loop.get_queues(loop) |> Enum.count()
-      assert %Queue{name: "first", interval: 10} = Loop.get_queues(loop) |> List.first()
+      assert %Queue{name: "first", interval: 10} == Loop.get_queues(loop) |> List.first()
     end
   end
 

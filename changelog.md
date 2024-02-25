@@ -2,9 +2,14 @@
 
 ## dev
 
+Sim.Loop:
+
+- remove `set_queue`, `add_queue` now replaces queues with the same name
+
 Grid:
 
 - allow accessing a grid with a tuple of coordination values `Grid.get(grid, {x, y})`
+
 
 ## 0.2.0
 
