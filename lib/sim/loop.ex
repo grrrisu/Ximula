@@ -29,13 +29,9 @@ defmodule Ximula.Sim.Loop do
     GenServer.call(server, :get_queues)
   end
 
+  # adds or replaces a queue with the same name
   def add_queue(server \\ __MODULE__, %Queue{} = queue) do
     GenServer.cast(server, {:add_queue, queue})
-  end
-
-  # adds or replaces a queue with the same name
-  def set_queue(server \\ __MODULE__, %Queue{} = queue) do
-    GenServer.cast(server, {:set_queue, queue})
   end
 
   def clear(server \\ __MODULE__) do
@@ -69,10 +65,6 @@ defmodule Ximula.Sim.Loop do
   end
 
   def handle_cast({:add_queue, queue}, state) do
-    {:noreply, %{state | queues: [queue | state.queues]}}
-  end
-
-  def handle_cast({:set_queue, queue}, state) do
     queues =
       case Enum.find_index(state.queues, &(&1.name == queue.name)) do
         nil -> [queue | state.queues]
