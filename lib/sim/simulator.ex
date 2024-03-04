@@ -15,8 +15,29 @@ defmodule Ximula.Simulator do
   ```
   """
 
-  def sim(entities, simulation, id_func \\ & &1, supervisor \\ Ximula.Simulator.Task.Supervisor) do
-    sim_entities(entities, simulation, supervisor)
+  @doc """
+
+  Will execute the simulation function in parallel and returns an array of results for successful and failed tasks.
+
+  entities: list of elements to simulate
+
+  simulation: simulation function in form of {module, func, args}
+
+  id_func: function to get the id for each entity
+
+  supervisor: Task.Supervisor, default: Ximula.Simulator.Task.Supervisor
+
+  ## Options:
+    * max_concurrency: set max concurrent tasks executing the sim function
+  """
+  def sim(
+        entities,
+        simulation,
+        id_func \\ & &1,
+        supervisor \\ Ximula.Simulator.Task.Supervisor,
+        opts \\ []
+      ) do
+    sim_entities(entities, simulation, supervisor, opts)
     |> Stream.zip(Enum.map(entities, id_func))
     |> Stream.reject(&not_changed(&1))
     |> Enum.reduce(%{ok: [], exit: []}, &group_by_state/2)
@@ -29,8 +50,8 @@ defmodule Ximula.Simulator do
     {time_diff, result}
   end
 
-  defp sim_entities(entities, {module, func, args}, supervisor) do
-    Task.Supervisor.async_stream_nolink(supervisor, entities, module, func, args)
+  defp sim_entities(entities, {module, func, args}, supervisor, opts) do
+    Task.Supervisor.async_stream_nolink(supervisor, entities, module, func, args, opts)
   end
 
   defp group_by_state({{state, result}, id}, %{ok: ok, exit: failed}) do
