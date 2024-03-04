@@ -53,7 +53,7 @@ defmodule Ximula.Simulator do
       module,
       func,
       args,
-      Keyword.merge(opts, zip_input_on_exit: true)
+      Keyword.merge(opts, zip_input_on_exit: true, ordered: false)
     )
   end
 

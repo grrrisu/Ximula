@@ -25,17 +25,17 @@ defmodule Ximula.SimulatorTest do
     entities = 1..6 |> Enum.map(&%{id: &1, value: &1})
     results = Simulator.sim(entities, {SimulatorTest, :sim_failed, []}, supervisor)
 
-    assert Enum.map(results.ok, & &1.id) == [5, 4, 2, 1]
+    assert Enum.map(results.ok, & &1.id) |> Enum.sort() == [1, 2, 4, 5]
     assert Enum.member?(results.ok, %{id: 1, value: 11})
     assert Enum.member?(results.ok, %{id: 5, value: 15})
-    assert Enum.map(results.exit, fn {entity, _reason} -> entity.id end) == [6, 3]
+    assert Enum.map(results.exit, fn {entity, _reason} -> entity.id end) |> Enum.sort() == [3, 6]
   end
 
   test "returns only changed entities", %{supervisor: supervisor} do
     entities = 1..6 |> Enum.map(&%{id: &1, value: &1})
     results = Simulator.sim(entities, {SimulatorTest, :sim_changed, []}, supervisor)
 
-    assert Enum.map(results.ok, & &1.id) == [6, 4, 2]
+    assert Enum.map(results.ok, & &1.id) |> Enum.sort() == [2, 4, 6]
     assert Enum.member?(results.ok, %{id: 6, value: 16})
     assert Enum.member?(results.ok, %{id: 2, value: 12})
     assert Enum.empty?(results.exit)
