@@ -148,7 +148,7 @@ defmodule FieldSimulator do
   def sim_simulation(queue, simulation, opts) do
     Simulator.benchmark(fn ->
       get_positions(opts[:proxy], queue.name)
-      |> Simulator.sim({simulation, :change, [opts[:proxy]]}, & &1)
+      |> Simulator.sim({simulation, :change, [opts[:proxy]]})
       |> handle_success(opts[:proxy])
       |> handle_failed(opts[:proxy])
       |> summarize(simulation)

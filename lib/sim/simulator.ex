@@ -23,8 +23,6 @@ defmodule Ximula.Simulator do
 
   simulation: simulation function in form of {module, func, args}
 
-  id_func: function to get the id for each entity
-
   supervisor: Task.Supervisor, default: Ximula.Simulator.Task.Supervisor
 
   ## Options:
@@ -33,12 +31,10 @@ defmodule Ximula.Simulator do
   def sim(
         entities,
         simulation,
-        id_func \\ & &1,
         supervisor \\ Ximula.Simulator.Task.Supervisor,
         opts \\ []
       ) do
     sim_entities(entities, simulation, supervisor, opts)
-    |> Stream.zip(Enum.map(entities, id_func))
     |> Stream.reject(&not_changed(&1))
     |> Enum.reduce(%{ok: [], exit: []}, &group_by_state/2)
   end
@@ -51,16 +47,23 @@ defmodule Ximula.Simulator do
   end
 
   defp sim_entities(entities, {module, func, args}, supervisor, opts) do
-    Task.Supervisor.async_stream_nolink(supervisor, entities, module, func, args, opts)
+    Task.Supervisor.async_stream_nolink(
+      supervisor,
+      entities,
+      module,
+      func,
+      args,
+      Keyword.merge(opts, zip_input_on_exit: true)
+    )
   end
 
-  defp group_by_state({{state, result}, id}, %{ok: ok, exit: failed}) do
+  defp group_by_state({state, result}, %{ok: ok, exit: failed}) do
     case state do
       :ok -> %{ok: [result | ok], exit: failed}
-      :exit -> %{ok: ok, exit: [{id, result} | failed]}
+      :exit -> %{ok: ok, exit: [result | failed]}
     end
   end
 
-  defp not_changed({{:ok, :no_change}, _id}), do: true
+  defp not_changed({:ok, :no_change}), do: true
   defp not_changed(_), do: false
 end

@@ -23,17 +23,17 @@ defmodule Ximula.SimulatorTest do
 
   test "returns results grouped by success and failed", %{supervisor: supervisor} do
     entities = 1..6 |> Enum.map(&%{id: &1, value: &1})
-    results = Simulator.sim(entities, {SimulatorTest, :sim_failed, []}, & &1.id, supervisor)
+    results = Simulator.sim(entities, {SimulatorTest, :sim_failed, []}, supervisor)
 
     assert Enum.map(results.ok, & &1.id) == [5, 4, 2, 1]
     assert Enum.member?(results.ok, %{id: 1, value: 11})
     assert Enum.member?(results.ok, %{id: 5, value: 15})
-    assert Enum.map(results.exit, fn {id, _reason} -> id end) == [6, 3]
+    assert Enum.map(results.exit, fn {entity, _reason} -> entity.id end) == [6, 3]
   end
 
   test "returns only changed entities", %{supervisor: supervisor} do
     entities = 1..6 |> Enum.map(&%{id: &1, value: &1})
-    results = Simulator.sim(entities, {SimulatorTest, :sim_changed, []}, & &1.id, supervisor)
+    results = Simulator.sim(entities, {SimulatorTest, :sim_changed, []}, supervisor)
 
     assert Enum.map(results.ok, & &1.id) == [6, 4, 2]
     assert Enum.member?(results.ok, %{id: 6, value: 16})
