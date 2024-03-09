@@ -48,6 +48,16 @@ defmodule Ximula.AccessData do
   end
 
   @doc """
+  set the data
+  Example
+  :ok = AccessData.set(fn grid -> new_grid end)
+  {:error, msg} = AccessData.set(fn grid -> new_grid end)
+  """
+  def set(server \\ __MODULE__, func) do
+    GenServer.call(server, {:set, func})
+  end
+
+  @doc """
   Example
   data = AccessData.lock({1,2}, grid, &Grid.get(&1, &2))
   :ok = AccessData.lock({1,2}, grid)
@@ -83,8 +93,14 @@ defmodule Ximula.AccessData do
     GenServer.call(server, {:update_list, keys, fun})
   end
 
-  def release(keys, server \\ __MODULE__) do
+  def release(key, server \\ __MODULE__)
+
+  def release(keys, server) when is_list(keys) do
     GenServer.call(server, {:release, keys})
+  end
+
+  def release(key, server) do
+    GenServer.call(server, {:release, [key]})
   end
 
   def init(opts) do
@@ -99,6 +115,13 @@ defmodule Ximula.AccessData do
 
   def handle_call({:get_by, fun}, _from, state) do
     {:reply, fun.(state.data), state}
+  end
+
+  def handle_call({:set, func}, _from, %{caller: caller, data: data} = state) do
+    case caller |> Map.values() |> Enum.filter(&(!is_nil(&1))) do
+      [] -> {:reply, :ok, %{state | data: func.(data)}}
+      _ -> {:reply, {:error, "set data failed, object is locked"}, state}
+    end
   end
 
   def handle_call({:lock, key, fun}, from, state) do
