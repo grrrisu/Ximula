@@ -60,6 +60,16 @@ defmodule Ximula.AccessDataTest do
     end
   end
 
+  describe "set" do
+    test "any lock blocks the update", %{grid: grid} do
+      assert 11 = lock({1, 1}, grid)
+      assert {:error, _msg} = AccessData.set(grid, fn data -> "new root" end)
+      assert :ok = update({1, 1}, 22, grid)
+      assert :ok = AccessData.set(grid, fn data -> "new root" end)
+      assert AccessData.get_by(grid, & &1) == "new root"
+    end
+  end
+
   describe "lock" do
     test "are executed in sequence for one field", %{grid: grid} do
       before = Time.utc_now()
