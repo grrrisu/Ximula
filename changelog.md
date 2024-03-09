@@ -16,6 +16,29 @@ AccessData:
 
 - rename `get_by` to `get`
 - function to `set` all data at once
+- rename lock and update functions:
+  
+```elixir
+data = AccessData.lock({1,2}, pid, &Grid.get(&1, {1,2}) end)
+data = AccessData.lock([{1,1}, {1,2}], pid, &[Grid.get(&1, {1,1}), Grid.get(&1, {1,2})])
+:ok = AccessData.lock({1,2}, pid)
+
+data = AccessData.lock_key({1,2}, pid, &Grid.get(&1, &2) end)
+:ok = AccessData.lock_key({1,2}, pid)
+
+[data, data] = AccessData.lock_list([{0, 2}, {1,2}], pid, &Grid.get(&1, &2))
+[:ok, :ok] = AccessData.lock_list([{0, 2}, {1,2}], pid)
+
+:ok = AccessData.lock_list([{0,2}, {1,2}], pid)
+AccessData.update({0,2}, pid, &Grid.apply_changes(&1, [{{0,2}, new_data}]))
+AccessData.update([{0,2}, {1,2}], pid, &Grid.apply_changes(&1, [{{0,2}, new_data}, {{1,2}, new_data}]))
+
+:ok = AccessData.lock({0,2}, grid)
+AccessData.update_key({{1,2}, new_data}, pid, &Grid.put(&1, &2, &3))
+
+:ok = AccessData.lock_list([{0,2}, {1,2}], grid)
+AccessData.update_list([{{0,2}, new_data}, {{1,2}, new_data}], &Grid.put(&1, &2, &3))
+```
 
 
 ## 0.2.0

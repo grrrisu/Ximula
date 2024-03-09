@@ -59,46 +59,62 @@ defmodule Ximula.AccessData do
 
   @doc """
   Example
-  data = AccessData.lock_data({1,2}, pid, &Grid.get(&1, {1,2}) end)
-  :ok = AccessData.lock_data({1,2}, pid)
+  data = AccessData.lock({1,2}, pid, &Grid.get(&1, {1,2}) end)
+  data = AccessData.lock([{1,1}, {1,2}], pid, &[Grid.get(&1, {1,1}), Grid.get(&1, {1,2})])
+  :ok = AccessData.lock({1,2}, pid)
   """
-  def lock_data(key, server \\ __MODULE__, fun \\ fn _ -> :ok end) do
+  def lock(key, server \\ __MODULE__, fun \\ fn _ -> :ok end)
+
+  def lock([key | rest] = keys, server, fun)
+      when is_list(keys) do
+    Enum.each(rest, fn key -> :ok = lock(key, server) end)
+    lock(key, server, fun)
+  end
+
+  def lock(key, server, fun) do
     GenServer.call(server, {:lock_data, key, fun})
   end
 
   @doc """
   Example
-  data = AccessData.lock({1,2}, pid, &Grid.get(&1, &2) end)
-  :ok = AccessData.lock({1,2}, pid)
+  data = AccessData.lock_key({1,2}, pid, &Grid.get(&1, &2) end)
+  :ok = AccessData.lock_key({1,2}, pid)
   """
-  def lock(key, server \\ __MODULE__, fun \\ fn _, _ -> :ok end) do
-    lock_data(key, server, fn data -> fun.(data, key) end)
+  def lock_key(key, server \\ __MODULE__, fun \\ fn _, _ -> :ok end) do
+    lock(key, server, fn data -> fun.(data, key) end)
   end
 
   @doc """
   Example
-  [data, data] = AccessData.lock([{0, 2}, {1,2}], pid, &Grid.get(&1, &2))
-  [:ok, :ok] = AccessData.lock([{0, 2}, {1,2}], pid)
+  [data, data] = AccessData.lock_list([{0, 2}, {1,2}], pid, &Grid.get(&1, &2))
+  [:ok, :ok] = AccessData.lock_list([{0, 2}, {1,2}], pid)
   """
   def lock_list(keys, server \\ __MODULE__, fun \\ fn _, _ -> :ok end) when is_list(keys) do
-    Enum.map(keys, &lock(&1, server, fun))
+    Enum.map(keys, &lock_key(&1, server, fun))
   end
 
   @doc """
   Example
-  :ok = AccessData.lock_list([{0,2}, {1,2}], grid)
-  AccessData.update_data([{0,2}, {1,2}], &Grid.apply_changes(&1, [{{0,2}, new_data}, {{1,2}, new_data}]))
+  :ok = AccessData.lock_list([{0,2}, {1,2}], pid)
+  AccessData.update({0,2}, pid, &Grid.apply_changes(&1, [{{0,2}, new_data}]))
+  AccessData.update([{0,2}, {1,2}], pid, &Grid.apply_changes(&1, [{{0,2}, new_data}, {{1,2}, new_data}]))
   """
-  def update_data(keys, server \\ __MODULE__, fun) do
+  def update(keys, server \\ __MODULE__, fun)
+
+  def update(keys, server, fun) when is_list(keys) do
     GenServer.call(server, {:update_data, keys, fun})
+  end
+
+  def update(key, server, fun) do
+    update([key], server, fun)
   end
 
   @doc """
   Example
   :ok = AccessData.lock({0,2}, grid)
-  AccessData.update({1,2}, new_data, &Grid.put(&1, &2, &3))
+  AccessData.update_key({{1,2}, new_data}, pid, &Grid.put(&1, &2, &3))
   """
-  def update(key, data, server \\ __MODULE__, fun) do
+  def update_key(key, data, server \\ __MODULE__, fun) do
     update_list([{key, data}], server, fun)
   end
 
@@ -108,7 +124,7 @@ defmodule Ximula.AccessData do
   AccessData.update_list([{{0,2}, new_data}, {{1,2}, new_data}], &Grid.put(&1, &2, &3))
   """
   def update_list(key_values, server \\ __MODULE__, fun) do
-    update_data(Enum.map(key_values, &(&1 |> Tuple.to_list() |> List.first())), server, fn data ->
+    update(Enum.map(key_values, &(&1 |> Tuple.to_list() |> List.first())), server, fn data ->
       Enum.reduce(key_values, data, fn {key, value}, data -> fun.(data, key, value) end)
     end)
   end
