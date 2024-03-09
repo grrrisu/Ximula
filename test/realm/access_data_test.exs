@@ -13,7 +13,7 @@ defmodule Ximula.AccessDataTest do
   end
 
   def get({x, y}, grid) do
-    AccessData.get_by(grid, &Grid.get(&1, x, y))
+    AccessData.get(grid, &Grid.get(&1, x, y))
   end
 
   def lock({x, y}, grid) do
@@ -38,11 +38,11 @@ defmodule Ximula.AccessDataTest do
 
   describe "get" do
     test "get all", %{grid: grid} do
-      assert 1 == AccessData.get_by(grid, & &1) |> Grid.get(0, 1)
+      assert 1 == AccessData.get(grid, & &1) |> Grid.get(0, 1)
     end
 
     test "get with function", %{grid: grid} do
-      assert [0, 1, 2, 3] == AccessData.get_by(grid, &Grid.filter(&1, fn _x, _y, v -> v < 10 end))
+      assert [0, 1, 2, 3] == AccessData.get(grid, &Grid.filter(&1, fn _x, _y, v -> v < 10 end))
     end
   end
 
@@ -63,10 +63,10 @@ defmodule Ximula.AccessDataTest do
   describe "set" do
     test "any lock blocks the update", %{grid: grid} do
       assert 11 = lock({1, 1}, grid)
-      assert {:error, _msg} = AccessData.set(grid, fn data -> "new root" end)
+      assert {:error, _msg} = AccessData.set(grid, fn _data -> "new root" end)
       assert :ok = update({1, 1}, 22, grid)
-      assert :ok = AccessData.set(grid, fn data -> "new root" end)
-      assert AccessData.get_by(grid, & &1) == "new root"
+      assert :ok = AccessData.set(grid, fn _data -> "new root" end)
+      assert AccessData.get(grid, & &1) == "new root"
     end
   end
 
@@ -102,7 +102,7 @@ defmodule Ximula.AccessDataTest do
       |> Task.await_many()
 
       assert 200 > Time.diff(Time.utc_now(), before, :millisecond)
-      assert [1, 2, 3, 4] == AccessData.get_by(grid, &Grid.filter(&1, fn _x, _y, v -> v < 10 end))
+      assert [1, 2, 3, 4] == AccessData.get(grid, &Grid.filter(&1, fn _x, _y, v -> v < 10 end))
     end
 
     test "get never blocks", %{grid: grid} do

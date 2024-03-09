@@ -4,7 +4,7 @@ defmodule Ximula.AccessData do
   while remaining responsive to just read operations.
 
   data = AccessProxy.lock(key) # blocks until an other client updates the data
-  data = AccessProxy.get_by(&Map.get(&1, key)) # never blocks
+  data = AccessProxy.get(&Map.get(&1, key)) # never blocks
   :ok = AccessProxy.update(key, Map.put(&1, key, new_data)) # releases the lock and will reply to the next client in line with the updated data
   {:error, msg} = AccessProxy.update(key, Map.put(&1, key, new_data)) # if between lock and update too much time elapsed (default 5 sec)
 
@@ -22,7 +22,7 @@ defmodule Ximula.AccessData do
       end)
     end)
   |> Task.await_many()
-  %{a: 3, b: 4, c: 5} = AccessData.get_by(& &1)
+  %{a: 3, b: 4, c: 5} = AccessData.get(& &1)
   """
   use GenServer
 
@@ -41,10 +41,10 @@ defmodule Ximula.AccessData do
 
   @doc """
   Example
-  data = AccessData.get_by(&Grid.filter(&1, fn _x, _y, v -> v < 10 end), grid)
+  data = AccessData.get(&Grid.filter(&1, fn _x, _y, v -> v < 10 end), grid)
   """
-  def get_by(server \\ __MODULE__, fun) do
-    GenServer.call(server, {:get_by, fun})
+  def get(server \\ __MODULE__, fun) do
+    GenServer.call(server, {:get, fun})
   end
 
   @doc """
@@ -113,7 +113,7 @@ defmodule Ximula.AccessData do
      }}
   end
 
-  def handle_call({:get_by, fun}, _from, state) do
+  def handle_call({:get, fun}, _from, state) do
     {:reply, fun.(state.data), state}
   end
 

@@ -12,6 +12,11 @@ Grid:
 
 - allow accessing a grid with a tuple of coordination values `Grid.get(grid, {x, y})`
 
+AccessData:
+
+- rename `get_by` to `get`
+- function to `set` all data at once
+
 
 ## 0.2.0
 
