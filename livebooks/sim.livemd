@@ -46,23 +46,23 @@ defmodule Sim.Data do
   end
 
   def get_field({x, y}, pid) do
-    AccessData.get_by(pid, fn map -> Torus.get(map, x, y) end)
+    AccessData.get(pid, fn map -> Torus.get(map, x, y) end)
   end
 
   def get_all_fields(pid) do
-    AccessData.get_by(pid, &Grid.values(&1))
+    AccessData.get(pid, &Grid.values(&1))
   end
 
   def positions(pid) do
-    AccessData.get_by(pid, &Grid.map(&1, fn x, y, _ -> {x, y} end))
+    AccessData.get(pid, &Grid.map(&1, fn x, y, _ -> {x, y} end))
   end
 
   def lock_field(position, pid) do
-    AccessData.lock(position, pid, &Grid.get(&1, &2))
+    AccessData.lock_key(position, pid, &Grid.get(&1, &2))
   end
 
   def update_field(field, position, pid) do
-    AccessData.update(position, field, pid, &Grid.put(&1, &2, &3))
+    AccessData.update_key(position, field, pid, &Grid.put(&1, &2, &3))
   end
 end
 ```

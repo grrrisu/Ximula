@@ -17,7 +17,7 @@ defmodule Ximula.AccessDataTest do
   end
 
   def lock({x, y}, grid) do
-    AccessData.lock({x, y}, grid, fn data, {x, y} -> Grid.get(data, x, y) end)
+    AccessData.lock_key({x, y}, grid, fn data, {x, y} -> Grid.get(data, x, y) end)
   end
 
   def lock_list(list, grid) do
@@ -25,7 +25,7 @@ defmodule Ximula.AccessDataTest do
   end
 
   def update({x, y}, value, grid) do
-    AccessData.update({x, y}, value, grid, fn data, {x, y}, value ->
+    AccessData.update_key({x, y}, value, grid, fn data, {x, y}, value ->
       Grid.put(data, x, y, value)
     end)
   end
@@ -46,6 +46,16 @@ defmodule Ximula.AccessDataTest do
     end
   end
 
+  describe "set" do
+    test "any lock blocks the update", %{grid: grid} do
+      assert 11 = lock({1, 1}, grid)
+      assert {:error, _msg} = AccessData.set(grid, fn _data -> "new root" end)
+      assert :ok = update({1, 1}, 22, grid)
+      assert :ok = AccessData.set(grid, fn _data -> "new root" end)
+      assert AccessData.get(grid, & &1) == "new root"
+    end
+  end
+
   describe "update" do
     test "update with passed data", %{grid: grid} do
       assert 12 == lock({1, 2}, grid)
@@ -58,15 +68,20 @@ defmodule Ximula.AccessDataTest do
       {:error, _msg} = update({1, 2}, 24, grid)
       assert 12 == get({1, 2}, grid)
     end
-  end
 
-  describe "set" do
-    test "any lock blocks the update", %{grid: grid} do
-      assert 11 = lock({1, 1}, grid)
-      assert {:error, _msg} = AccessData.set(grid, fn _data -> "new root" end)
-      assert :ok = update({1, 1}, 22, grid)
-      assert :ok = AccessData.set(grid, fn _data -> "new root" end)
-      assert AccessData.get(grid, & &1) == "new root"
+    test "get and update multiple data at once", %{grid: grid} do
+      assert [11, 12] ==
+               AccessData.lock([{1, 1}, {1, 2}], grid, fn data ->
+                 [Grid.get(data, {1, 1}), Grid.get(data, {1, 2})]
+               end)
+
+      assert :ok ==
+               AccessData.update([{1, 1}, {1, 2}], grid, fn data ->
+                 Grid.apply_changes(data, [{{1, 1}, 100}, {{1, 2}, 200}])
+               end)
+
+      assert 100 == get({1, 1}, grid)
+      assert 200 == get({1, 2}, grid)
     end
   end
 
