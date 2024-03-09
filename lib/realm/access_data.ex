@@ -59,20 +59,38 @@ defmodule Ximula.AccessData do
 
   @doc """
   Example
-  data = AccessData.lock({1,2}, grid, &Grid.get(&1, &2))
-  :ok = AccessData.lock({1,2}, grid)
+  data = AccessData.lock_data({1,2}, pid, &Grid.get(&1, {1,2}) end)
+  :ok = AccessData.lock_data({1,2}, pid)
   """
-  def lock(key, server \\ __MODULE__, fun \\ fn _, _ -> :ok end) do
-    GenServer.call(server, {:lock, key, fun})
+  def lock_data(key, server \\ __MODULE__, fun \\ fn _ -> :ok end) do
+    GenServer.call(server, {:lock_data, key, fun})
   end
 
   @doc """
   Example
-  [data, data] = AccessData.lock([{0, 2}, {1,2}], grid, &Grid.get(&1, &2))
-  [:ok, :ok] = AccessData.lock([{0, 2}, {1,2}], grid)
+  data = AccessData.lock({1,2}, pid, &Grid.get(&1, &2) end)
+  :ok = AccessData.lock({1,2}, pid)
+  """
+  def lock(key, server \\ __MODULE__, fun \\ fn _, _ -> :ok end) do
+    lock_data(key, server, fn data -> fun.(data, key) end)
+  end
+
+  @doc """
+  Example
+  [data, data] = AccessData.lock([{0, 2}, {1,2}], pid, &Grid.get(&1, &2))
+  [:ok, :ok] = AccessData.lock([{0, 2}, {1,2}], pid)
   """
   def lock_list(keys, server \\ __MODULE__, fun \\ fn _, _ -> :ok end) when is_list(keys) do
     Enum.map(keys, &lock(&1, server, fun))
+  end
+
+  @doc """
+  Example
+  :ok = AccessData.lock_list([{0,2}, {1,2}], grid)
+  AccessData.update_data([{0,2}, {1,2}], &Grid.apply_changes(&1, [{{0,2}, new_data}, {{1,2}, new_data}]))
+  """
+  def update_data(keys, server \\ __MODULE__, fun) do
+    GenServer.call(server, {:update_data, keys, fun})
   end
 
   @doc """
@@ -87,20 +105,22 @@ defmodule Ximula.AccessData do
   @doc """
   Example
   :ok = AccessData.lock_list([{0,2}, {1,2}], grid)
-  AccessData.update_listr([{{0,2}, new_data}, {{1,2}, new_data}], &Grid.put(&1, &2, &3))
+  AccessData.update_list([{{0,2}, new_data}, {{1,2}, new_data}], &Grid.put(&1, &2, &3))
   """
-  def update_list(keys, server \\ __MODULE__, fun) do
-    GenServer.call(server, {:update_list, keys, fun})
+  def update_list(key_values, server \\ __MODULE__, fun) do
+    update_data(Enum.map(key_values, &(&1 |> Tuple.to_list() |> List.first())), server, fn data ->
+      Enum.reduce(key_values, data, fn {key, value}, data -> fun.(data, key, value) end)
+    end)
   end
 
   def release(key, server \\ __MODULE__)
 
   def release(keys, server) when is_list(keys) do
-    GenServer.call(server, {:release, keys})
+    GenServer.call(server, {:update_data, keys, & &1})
   end
 
   def release(key, server) do
-    GenServer.call(server, {:release, [key]})
+    release([key], server)
   end
 
   def init(opts) do
@@ -124,7 +144,7 @@ defmodule Ximula.AccessData do
     end
   end
 
-  def handle_call({:lock, key, fun}, from, state) do
+  def handle_call({:lock_data, key, fun}, from, state) do
     handle_lock(
       key,
       fun,
@@ -134,35 +154,21 @@ defmodule Ximula.AccessData do
     )
   end
 
-  def handle_call({:update_list, list, fun}, {pid, _}, state) do
-    {errors, caller} =
-      Enum.reduce(list, {[], state.caller}, fn {key, _}, {errors, caller} ->
-        demonitor_caller(key, pid, caller, errors)
-      end)
-
-    data = set_data(list, state.data, fun, errors)
-
-    {caller, requests} =
-      Enum.reduce(list, {caller, state.requests}, fn {key, _}, {caller, requests} ->
-        set_requests(key, data, caller, requests, state.max_duration)
-      end)
-
-    state = %{state | data: data, caller: caller, requests: requests}
-    update_reply(errors, pid, state)
-  end
-
-  def handle_call({:release, keys}, {pid, _}, state) do
+  def handle_call({:update_data, keys, fun}, {pid, _}, state) do
     {errors, caller} =
       Enum.reduce(keys, {[], state.caller}, fn key, {errors, caller} ->
         demonitor_caller(key, pid, caller, errors)
       end)
 
+    data = set_data(state.data, fun, errors)
+
     {caller, requests} =
       Enum.reduce(keys, {caller, state.requests}, fn key, {caller, requests} ->
-        set_requests(key, state.data, caller, requests, state.max_duration)
+        set_requests(key, data, caller, requests, state.max_duration)
       end)
 
-    update_reply(errors, pid, %{state | caller: caller, requests: requests})
+    state = %{state | data: data, caller: caller, requests: requests}
+    update_reply(errors, pid, state)
   end
 
   def handle_info({:check_timeout, key, {pid, _ref}, monitor_ref}, state) do
@@ -186,12 +192,11 @@ defmodule Ximula.AccessData do
     monitor_ref = Process.monitor(pid)
     start_check_timeout(key, from, monitor_ref, state.max_duration)
 
-    {:reply, fun.(state.data, key),
-     %{state | caller: Map.put(state.caller, key, {pid, monitor_ref})}}
+    {:reply, fun.(state.data), %{state | caller: Map.put(state.caller, key, {pid, monitor_ref})}}
   end
 
-  defp handle_lock(key, fun, {pid, _}, {pid, _}, state) do
-    {:reply, fun.(state.data, key), state}
+  defp handle_lock(_key, fun, {pid, _}, {pid, _}, state) do
+    {:reply, fun.(state.data), state}
   end
 
   defp handle_lock(key, fun, {pid, _} = from, _caller, state) do
@@ -266,17 +271,13 @@ defmodule Ximula.AccessData do
     end
   end
 
-  defp set_data(list, data, fun, []) do
-    Enum.reduce(list, data, fn {key, value}, data ->
-      fun.(data, key, value)
-    end)
-  end
+  defp set_data(data, fun, []), do: fun.(data)
 
-  defp set_data(_list, data, _fun, _errors), do: data
+  defp set_data(data, _fun, _errors), do: data
 
   defp reply_to_next_caller(key, data, requests, max_duration) do
     [{{pid, _ref} = next_caller, monitor_ref, fun} | remaining] = requests
-    :ok = GenServer.reply(next_caller, fun.(data, key))
+    :ok = GenServer.reply(next_caller, fun.(data))
     start_check_timeout(key, next_caller, monitor_ref, max_duration)
     {{pid, monitor_ref}, remaining}
   end
