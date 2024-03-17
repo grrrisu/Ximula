@@ -36,7 +36,7 @@ defmodule Ximula.AccessData do
    * max_duration a caller can exclusivly lock a field
   """
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, Keyword.delete(opts, :name), name: opts[:name] || __MODULE__)
+    GenServer.start_link(__MODULE__, Keyword.delete(opts, :name), name: opts[:name])
   end
 
   @doc """
