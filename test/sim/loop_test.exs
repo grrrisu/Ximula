@@ -14,7 +14,7 @@ defmodule Ximula.Sim.LoopTest do
     send(test_case, :success)
   end
 
-  describe "" do
+  describe "setup" do
     setup do
       %{loop: start_supervised!(Loop)}
     end
@@ -41,6 +41,16 @@ defmodule Ximula.Sim.LoopTest do
       assert 1 == Loop.get_queues(loop) |> Enum.count()
       assert %Queue{name: "first", interval: 10} == Loop.get_queues(loop) |> List.first()
     end
+
+    test "don't replace a queue while loop is running", %{loop: loop} do
+      assert [] == Loop.get_queues(loop)
+      :ok = Loop.add_queue(loop, %Queue{name: "first", interval: 5})
+      :ok = Loop.start_sim(loop)
+      {:error, _msg} = Loop.add_queue(loop, %Queue{name: "first", interval: 10})
+      :ok = Loop.stop_sim(loop)
+      assert 1 == Loop.get_queues(loop) |> Enum.count()
+      assert %Queue{name: "first", interval: 5} == Loop.get_queues(loop) |> List.first()
+    end
   end
 
   describe "start and stop" do
@@ -54,22 +64,22 @@ defmodule Ximula.Sim.LoopTest do
     @tag ci: :skip
     test "runs queue", %{loop: loop} do
       queue = %Queue{name: "test", func: {LoopTest, :callback, [dest: self()]}, interval: 5}
-      Loop.clear(loop)
-      Loop.add_queue(loop, queue)
-      Loop.start_sim(loop)
+      :ok = Loop.clear(loop)
+      :ok = Loop.add_queue(loop, queue)
+      :ok = Loop.start_sim(loop)
       Process.sleep(50)
-      Loop.stop_sim(loop)
+      :ok = Loop.stop_sim(loop)
       assert_received(:success)
     end
 
     @tag ci: :skip
     test "handles timeout", %{loop: loop} do
       queue = %Queue{name: "test", func: {LoopTest, :too_long, [dest: self()]}, interval: 5}
-      Loop.clear(loop)
-      Loop.add_queue(loop, queue)
-      Loop.start_sim(loop)
+      :ok = Loop.clear(loop)
+      :ok = Loop.add_queue(loop, queue)
+      :ok = Loop.start_sim(loop)
       Process.sleep(200)
-      Loop.stop_sim(loop)
+      :ok = Loop.stop_sim(loop)
       assert_received(:success)
     end
   end

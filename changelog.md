@@ -4,7 +4,7 @@
 
 Sim:
 
-- Loop: remove `set_queue`, `add_queue` now replaces queues with the same name
+- Loop: remove `set_queue`, `add_queue` now replaces queues with the same name. But can not be addes while the loop is running.
 - Simulator: allow to set max_concurrency
 - Simulator: remove id_func, in case of exit the function now returns the entire entity
 

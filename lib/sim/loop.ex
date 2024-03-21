@@ -31,7 +31,7 @@ defmodule Ximula.Sim.Loop do
 
   # adds or replaces a queue with the same name
   def add_queue(server \\ __MODULE__, %Queue{} = queue) do
-    GenServer.cast(server, {:add_queue, queue})
+    GenServer.call(server, {:add_queue, queue})
   end
 
   def clear(server \\ __MODULE__) do
@@ -60,18 +60,18 @@ defmodule Ximula.Sim.Loop do
     {:reply, state.queues, state}
   end
 
-  def handle_cast(:clear, state) do
-    {:noreply, %{state | running: false, queues: []}}
+  def handle_call({:add_queue, queue}, _from, state) do
+    index = Enum.find_index(state.queues, &(&1.name == queue.name))
+    queues = add_queue(state.queues, index, queue, state.running)
+
+    case queues do
+      {:error, msg} -> {:reply, {:error, msg}, state}
+      queues -> {:reply, :ok, %{state | queues: queues}}
+    end
   end
 
-  def handle_cast({:add_queue, queue}, state) do
-    queues =
-      case Enum.find_index(state.queues, &(&1.name == queue.name)) do
-        nil -> [queue | state.queues]
-        index -> List.replace_at(state.queues, index, queue)
-      end
-
-    {:noreply, %{state | queues: queues}}
+  def handle_cast(:clear, state) do
+    {:noreply, %{state | running: false, queues: []}}
   end
 
   def handle_cast(:start_sim, state) do
@@ -112,6 +112,14 @@ defmodule Ximula.Sim.Loop do
   def handle_info(_msg, state) do
     {:noreply, state}
   end
+
+  # adding a queue to running system can lead to errors,
+  # as the timer and task reference would get lost.
+  def add_queue(_queues, _index, _queue, true),
+    do: {:error, "do not add a queue to a running loop"}
+
+  def add_queue(queues, nil, queue, false), do: [queue | queues]
+  def add_queue(queues, index, queue, false), do: List.replace_at(queues, index, queue)
 
   def start_queues(queues) do
     Enum.map(queues, fn queue ->
