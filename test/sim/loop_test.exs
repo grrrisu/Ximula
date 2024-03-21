@@ -82,6 +82,14 @@ defmodule Ximula.Sim.LoopTest do
       :ok = Loop.stop_sim(loop)
       assert_received(:success)
     end
+
+    test "running?", %{loop: loop} do
+      assert false == Loop.running?(loop)
+      :ok = Loop.start_sim(loop)
+      assert true == Loop.running?(loop)
+      :ok = Loop.stop_sim(loop)
+      assert false == Loop.running?(loop)
+    end
   end
 
   describe "queues" do
