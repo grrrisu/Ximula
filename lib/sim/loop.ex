@@ -38,6 +38,10 @@ defmodule Ximula.Sim.Loop do
     GenServer.cast(server, :clear)
   end
 
+  def running?(server \\ __MODULE__) do
+    GenServer.call(server, :running?)
+  end
+
   def start_sim(server \\ __MODULE__) do
     GenServer.cast(server, :start_sim)
   end
@@ -68,6 +72,10 @@ defmodule Ximula.Sim.Loop do
       {:error, msg} -> {:reply, {:error, msg}, state}
       queues -> {:reply, :ok, %{state | queues: queues}}
     end
+  end
+
+  def handle_call(:running?, _from, state) do
+    {:reply, state.running, state}
   end
 
   def handle_cast(:clear, state) do
