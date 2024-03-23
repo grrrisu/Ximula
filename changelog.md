@@ -1,6 +1,6 @@
 # Changelog
 
-## dev
+## 0.3.0
 
 Sim:
 
