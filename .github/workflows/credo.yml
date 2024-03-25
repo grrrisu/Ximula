@@ -38,7 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         otp: ["26.0"]
-        elixir: ["1.15.2"]
+        elixir: ["1.16.2"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Elixir
