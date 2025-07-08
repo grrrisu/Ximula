@@ -2,6 +2,16 @@
 
 A helper library for various simulation helpers.
 
+## Content
+
+* Objects: Grid and Torus
+* Realm: Access data
+* Sim: Loop, Queue and Simulator
+
+## Livebook
+
+see [livebook](livebooks/sim.livemd)
+
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
