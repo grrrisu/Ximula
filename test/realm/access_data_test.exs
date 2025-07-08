@@ -196,8 +196,8 @@ defmodule Ximula.AccessDataTest do
     test "timeouted request should not be able to update", %{data: data} do
       grid =
         start_supervised!(
-          {AccessData, [name: :fast_access, data: data, max_duration: 50]},
-          id: :fast_access
+          {AccessData, [name: :fast_data_access, data: data, max_duration: 50]},
+          id: :fast_data_access
         )
 
       [

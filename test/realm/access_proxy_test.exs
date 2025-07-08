@@ -122,8 +122,8 @@ defmodule Ximula.AccessProxyTest do
     test "timeouted request should not be able to update", %{agent: agent} do
       proxy =
         start_supervised!(
-          {AccessProxy, [name: :fast_access, agent: agent, max_duration: 50]},
-          id: :fast_access
+          {AccessProxy, [name: :fast_proxy_access, agent: agent, max_duration: 50]},
+          id: :fast_proxy_access
         )
 
       [
