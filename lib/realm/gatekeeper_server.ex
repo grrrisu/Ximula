@@ -45,7 +45,7 @@ defmodule Ximula.Gatekeeper.Server do
         {:reply, result, state}
 
       false ->
-        {:reply, {:error, :locks_must_owned_by_caller}, state}
+        {:reply, {:error, "locks must be owned by the caller"}, state}
     end
   end
 
@@ -56,40 +56,22 @@ defmodule Ximula.Gatekeeper.Server do
         {:reply, :ok, state}
 
       false ->
-        {:reply, {:error, :locks_must_owned_by_caller}, state}
+        {:reply, {:error, "locks must be owned by the caller"}, state}
     end
   end
 
-  # def handle_info({:lock_timeout, key, pid}, state) do
-  #   case Map.get(state.locks, key) do
-  #     {^pid, monitor_ref, _timeout_ref} ->
-  #       {locks, waiting} = remove_lock({state.locks, state.waiting}, lock, state.max_duration)
-  #       {:noreply, %{state | locks: locks, waiting: waiting}}
-
-  #     _ ->
-  #       # Lock already released or changed, ignore
-  #       {:noreply, state}
-  #   end
-  # end
-
-  # # Handle process crashes
-  # def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-  #   # Check if it's the agent that died
-  #   if pid == state.agent do
-  #     {:stop, {:error, :agent_died}, state}
-  #   else
-  #     # Handle client process crash
-  #     handle_client_crash(pid, state)
-  #   end
-  # end
-
-  def handle_info({:lock_timeout, _key, _pid}, state) do
-    dbg("Timeout reached")
-    {:noreply, state}
+  def handle_info({:lock_timeout, key, _pid}, state) do
+    {:noreply, release(state, key)}
   end
 
-  def handle_info(msg, state) do
-    dbg(msg)
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
+    {:noreply,
+     state.locks
+     |> Map.filter(fn {_key, {key_pid, _, _}} -> key_pid == pid end)
+     |> Enum.reduce(state, fn {key, _lock}, state -> release(state, key) end)}
+  end
+
+  def handle_info(_msg, state) do
     {:noreply, state}
   end
 
@@ -141,8 +123,8 @@ defmodule Ximula.Gatekeeper.Server do
 
   defp grant_next_in_line([next | rest], state, key) do
     lock = waiting_to_lock(next, key, state.lock_duration)
-    state = %{state | locks: Map.put(state.locks, key, lock)}
-    %{state | waiting: next_waiting(key, rest, state.waiting)}
+    locks = Map.put(state.locks, key, lock)
+    %{state | locks: locks, waiting: next_waiting(key, rest, state.waiting)}
   end
 
   defp waiting_to_lock(next, key, lock_duration) do
