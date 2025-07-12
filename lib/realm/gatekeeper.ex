@@ -1,53 +1,51 @@
 defmodule Ximula.Gatekeeper do
-  defmodule Lock do
-    @enforce_keys [:key, :pid]
-    defstruct [:key, :pid, :value]
+  def get_context(server \\ __MODULE__) do
+    GenServer.call(server, :get_context)
   end
 
-  def get(_server \\ __MODULE__, _fun) do
-    42
+  def get(_server \\ __MODULE__, fun) do
+    fun.()
   end
 
-  def lock(server \\ __MODULE__, keys)
+  def request_lock(server \\ __MODULE__, keys)
 
   # Careful if not all keys are available, this function can take some time.
   # As it requests one key at the time, and keeps them until all are released again.
-  def lock(server, keys) when is_list(keys) do
-    Enum.map(keys, &lock(server, &1))
+  def request_lock(server, keys) when is_list(keys) do
+    Enum.map(keys, &request_lock(server, &1)) |> Enum.uniq() |> List.first()
   end
 
-  def lock(server, key) do
-    GenServer.call(server, {:lock, key})
+  def request_lock(server, key) do
+    GenServer.call(server, {:request_lock, key})
   end
 
-  def lock_and_read(server \\ __MODULE__, keys, fun)
+  def lock(server \\ __MODULE__, keys, fun)
 
-  def lock_and_read(server, keys, fun) when is_list(keys) do
-    lock(server, keys)
-    |> Enum.map(&Map.put(&1, :value, fun.(&1.key)))
+  def lock(server, keys, fun) when is_list(keys) do
+    :ok = request_lock(server, keys)
+    Enum.map(keys, &fun.(&1))
   end
 
-  def lock_and_read(server, key, fun) do
-    lock(server, key) |> Map.put(:value, fun.(key))
+  def lock(server, key, fun) do
+    :ok = request_lock(server, key)
+    fun.(key)
   end
 
-  def update(server \\ __MODULE__, locks, fun)
-
-  def update(server, [%Lock{} | _] = locks, fun) do
-    GenServer.call(server, {:update, locks, fun})
+  def update_multi(server, data, fun) when is_list(data) do
+    GenServer.call(server, {:update, data, fun})
   end
 
-  def update(server, %Lock{} = lock, fun) do
-    update(server, [lock], fun)
+  def update(server \\ __MODULE__, {key, value}, fun) do
+    update_multi(server, [{key, value}], fun)
   end
 
-  def release(server \\ __MODULE__, locks)
+  def release(server \\ __MODULE__, keys)
 
-  def release(server, [%Lock{} | _] = locks) do
-    :ok = GenServer.call(server, {:release, locks})
+  def release(server, keys) when is_list(keys) do
+    GenServer.call(server, {:release, keys})
   end
 
-  def release(server, %Lock{} = lock) do
-    :ok = GenServer.call(server, {:release, [lock]})
+  def release(server, key) do
+    release(server, [key])
   end
 end

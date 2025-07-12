@@ -1,9 +1,7 @@
 defmodule Ximula.Gatekeeper.Server do
   use GenServer
 
-  alias Ximula.Gatekeeper.Lock
-
-  @default_lock_duration 5_000
+  @default_max_lock_duration 5_000
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: opts[:name])
@@ -17,11 +15,17 @@ defmodule Ximula.Gatekeeper.Server do
        # key -> [{from, monitor_ref}] (queue of waiting processes)
        waiting: %{},
        # Maximum time a lock can be held
-       lock_duration: opts[:lock_duration] || @default_lock_duration
+       max_lock_duration: opts[:max_lock_duration] || @default_max_lock_duration,
+       # Context
+       context: opts[:context] || %{}
      }}
   end
 
-  def handle_call({:lock, key}, {pid, _} = from, state) do
+  def handle_call(:get_context, _from, state) do
+    {:reply, state.context, state}
+  end
+
+  def handle_call({:request_lock, key}, {pid, _} = from, state) do
     case Map.get(state.locks, key) do
       nil ->
         # Key is free, grant lock immediately
@@ -37,22 +41,24 @@ defmodule Ximula.Gatekeeper.Server do
     end
   end
 
-  def handle_call({:update, locks, fun}, {pid, _}, state) do
-    case validate_owner(locks, pid, state.locks) do
+  def handle_call({:update, data, fun}, {pid, _}, state) do
+    keys = Enum.map(data, fn {key, _value} -> key end)
+
+    case validate_owner(keys, pid, state.locks) do
       true ->
-        result = call_update(locks, fun)
-        state = release_multi(locks, state)
+        result = call_update(data, state.context, fun)
+        state = release_multi(keys, state)
         {:reply, result, state}
 
       false ->
-        {:reply, {:error, "locks must be owned by the caller"}, state}
+        {:reply, {:error, "locks must be owned by the caller"}, remove_caller(state, pid)}
     end
   end
 
-  def handle_call({:release, locks}, {pid, _}, state) do
-    case validate_owner(locks, pid, state.locks) do
+  def handle_call({:release, keys}, {pid, _}, state) do
+    case validate_owner(keys, pid, state.locks) do
       true ->
-        state = release_multi(locks, state)
+        state = release_multi(keys, state)
         {:reply, :ok, state}
 
       false ->
@@ -65,10 +71,7 @@ defmodule Ximula.Gatekeeper.Server do
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    {:noreply,
-     state.locks
-     |> Map.filter(fn {_key, {key_pid, _, _}} -> key_pid == pid end)
-     |> Enum.reduce(state, fn {key, _lock}, state -> release(state, key) end)}
+    {:noreply, remove_caller(state, pid)}
   end
 
   def handle_info(_msg, state) do
@@ -77,10 +80,9 @@ defmodule Ximula.Gatekeeper.Server do
 
   defp grant_lock(key, pid, state) do
     monitor_ref = Process.monitor(pid)
-    timeout_ref = Process.send_after(self(), {:lock_timeout, key, pid}, state.lock_duration)
-    lock = %Lock{key: key, pid: pid}
-    all_locks = Map.put_new(state.locks, lock.key, {pid, monitor_ref, timeout_ref})
-    {:reply, lock, %{state | locks: all_locks}}
+    timeout_ref = Process.send_after(self(), {:lock_timeout, key, pid}, state.max_lock_duration)
+    all_locks = Map.put_new(state.locks, key, {pid, monitor_ref, timeout_ref})
+    {:reply, :ok, %{state | locks: all_locks}}
   end
 
   defp add_to_waiting_queue(key, {pid, _} = from, state) do
@@ -90,15 +92,15 @@ defmodule Ximula.Gatekeeper.Server do
     {:noreply, %{state | waiting: all_waiting}}
   end
 
-  defp validate_owner(locks, pid, all_locks) do
-    Enum.all?(locks, fn lock ->
-      Map.get(all_locks, lock.key, {nil, nil, nil})
-      |> tap(fn {lock_pid, _, _} -> lock_pid == pid end)
+  defp validate_owner(keys, pid, locks) do
+    Enum.all?(keys, fn key ->
+      Map.get(locks, key, {nil, nil, nil})
+      |> then(fn {lock_pid, _, _} -> lock_pid == pid end)
     end)
   end
 
-  defp release_multi(locks, state) do
-    Enum.reduce(locks, state, &release(&2, &1.key))
+  defp release_multi(keys, state) do
+    Enum.reduce(keys, state, fn key, state -> release(state, key) end)
   end
 
   defp release(state, key) do
@@ -122,26 +124,32 @@ defmodule Ximula.Gatekeeper.Server do
   defp grant_next_in_line([], state, key), do: %{state | waiting: Map.delete(state.waiting, key)}
 
   defp grant_next_in_line([next | rest], state, key) do
-    lock = waiting_to_lock(next, key, state.lock_duration)
+    lock = waiting_to_lock(next, key, state.max_lock_duration)
     locks = Map.put(state.locks, key, lock)
     %{state | locks: locks, waiting: next_waiting(key, rest, state.waiting)}
   end
 
-  defp waiting_to_lock(next, key, lock_duration) do
+  defp waiting_to_lock(next, key, max_lock_duration) do
     {{pid, _} = from, monitor_ref} = next
-    timeout_ref = Process.send_after(self(), {:lock_timeout, key, pid}, lock_duration)
-    GenServer.reply(from, %Lock{pid: pid, key: key})
+    timeout_ref = Process.send_after(self(), {:lock_timeout, key, pid}, max_lock_duration)
+    GenServer.reply(from, :ok)
     {pid, monitor_ref, timeout_ref}
   end
 
   def next_waiting(key, [], waiting), do: Map.delete(waiting, key)
   def next_waiting(key, rest, waiting), do: Map.put(waiting, key, rest)
 
-  defp call_update([%Lock{} = lock], fun) do
-    fun.({lock.key, lock.value})
+  defp call_update([{key, value}], context, fun) do
+    fun.({key, value}, context)
   end
 
-  defp call_update([%Lock{} | _] = locks, fun) do
-    fun.(Enum.map(locks, &{&1.key, &1.value}))
+  defp call_update(data, context, fun) when is_list(data) do
+    fun.(data, context)
+  end
+
+  defp remove_caller(state, pid) do
+    state.locks
+    |> Map.filter(fn {_key, {key_pid, _, _}} -> key_pid == pid end)
+    |> Enum.reduce(state, fn {key, _lock}, state -> release(state, key) end)
   end
 end
