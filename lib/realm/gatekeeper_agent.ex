@@ -6,27 +6,35 @@ defmodule Ximula.Gatekeeper.Agent do
     Server.start_link(Keyword.merge(opts, name: opts[:name]))
   end
 
-  def get(_server \\ __MODULE__, agent, fun) do
-    Agent.get(agent, fun)
+  def get(server \\ __MODULE__, fun) do
+    context = Gatekeeper.get_context(server)
+    Agent.get(context.agent, fun)
   end
 
-  def lock(server \\ __MODULE__, keys) do
-    Gatekeeper.lock(server, keys)
+  def request_lock(server \\ __MODULE__, keys) do
+    Gatekeeper.request_lock(server, keys)
   end
 
   # Ximula.Gatekeeper.Agent.lock_and_read(agent, :a, &Map.get(&1, &2))
-  def lock_and_read(server \\ __MODULE__, agent, keys, fun) do
-    Gatekeeper.lock_and_read(server, keys, fn key -> Agent.get(agent, &fun.(&1, key)) end)
+  def lock(server \\ __MODULE__, keys, fun) do
+    context = Gatekeeper.get_context(server)
+    Gatekeeper.lock(server, keys, fn key -> Agent.get(context.agent, &fun.(&1, key)) end)
   end
 
   # Ximula.Gatekeeper.Agent.update(agent, :a, &Map.update(&1, &2, &3))
-  def update(server \\ __MODULE__, agent, locks, fun) do
-    Gatekeeper.update(server, locks, fn key_values ->
-      Agent.update(agent, &fun.(&1, key_values))
+  def update(server \\ __MODULE__, {key, value}, fun) do
+    Gatekeeper.update(server, {key, value}, fn {key, value}, context ->
+      Agent.update(context.agent, &fun.(&1, {key, value}))
+    end)
+  end
+
+  def update_multi(server \\ __MODULE__, data, fun) do
+    Gatekeeper.update_multi(server, data, fn data, context ->
+      Agent.update(context.agent, &fun.(&1, data))
     end)
   end
 
   def release(server \\ __MODULE__, locks) do
-    :ok = Gatekeeper.release(server, locks)
+    Gatekeeper.release(server, locks)
   end
 end
