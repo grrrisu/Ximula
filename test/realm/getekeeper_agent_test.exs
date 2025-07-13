@@ -63,6 +63,7 @@ defmodule Ximula.Gatekeeper.AgentTest do
   end
 
   test "lock and update", %{pid: pid} do
+    assert {:error, _msg} = update(pid, {1, 2}, 120)
     :ok = request_lock(pid, {1, 2})
     assert :ok == update(pid, {1, 2}, 120)
     assert 120 == get(pid, {1, 2})
@@ -77,9 +78,9 @@ defmodule Ximula.Gatekeeper.AgentTest do
   end
 
   test "release lock", %{pid: pid} do
+    assert {:error, _msg} = Gatekeeper.release(pid, {1, 2})
     :ok = request_lock(pid, {1, 2})
     assert :ok = Gatekeeper.release(pid, {1, 2})
-    assert {:error, _msg} = Gatekeeper.release(pid, {1, 1})
   end
 
   test "release lock multi", %{pid: pid} do

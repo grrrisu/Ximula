@@ -1,4 +1,62 @@
 defmodule Ximula.Gatekeeper.Server do
+  @moduledoc """
+  GenServer implementation for the Gatekeeper distributed locking system.
+
+  This module provides the core server functionality for managing locks, queues,
+  and timeouts. It should typically not be used directly - instead use the
+  `Ximula.Gatekeeper` or `Ximula.Gatekeeper.Agent` modules which provide
+  higher-level interfaces.
+
+  ## State Structure
+
+  The server maintains the following state:
+
+  - `locks`: Map of `key -> {pid, monitor_ref, timeout_ref}` representing active locks
+  - `waiting`: Map of `key -> [{from, monitor_ref}]` representing queued processes
+  - `max_lock_duration`: Maximum time a lock can be held before automatic timeout
+  - `context`: Additional data available to update functions
+
+  ## Lock Lifecycle
+
+  1. **Request**: Process requests a lock via `handle_call({:request_lock, key}, ...)`
+  2. **Grant**: If available, lock is granted immediately with monitoring and timeout
+  3. **Queue**: If unavailable, process is added to waiting queue for that key
+  4. **Release**: Lock is released via explicit call, timeout, or process crash
+  5. **Next**: Next process in queue (if any) is automatically granted the lock
+
+  ## Timeout Handling
+
+  Each lock has an associated timeout that automatically releases it after
+  `max_lock_duration` milliseconds. This prevents deadlocks when processes
+  crash or hang while holding locks.
+
+  ## Process Monitoring
+
+  The server monitors all processes that hold locks or are waiting for locks.
+  If a monitored process crashes, all its locks are automatically released
+  and it's removed from all waiting queues.
+
+  ## Configuration Options
+
+  - `max_lock_duration`: Timeout for automatic lock release (default: 5000ms)
+  - `context`: Additional data passed to update functions
+  - `name`: Process name for registration
+
+  ## Example
+
+      # Start server with custom configuration
+      {:ok, pid} = Ximula.Gatekeeper.Server.start_link([
+        max_lock_duration: 10_000,
+        context: %{database: my_db},
+        name: :my_gatekeeper
+      ])
+
+  ## Internal Messages
+
+  The server handles several internal messages:
+  - `{:lock_timeout, key, pid}`: Automatic lock timeout
+  - `{:DOWN, ref, :process, pid, reason}`: Process crash notification
+  """
   use GenServer
 
   @default_max_lock_duration 5_000
@@ -94,8 +152,10 @@ defmodule Ximula.Gatekeeper.Server do
 
   defp validate_owner(keys, pid, locks) do
     Enum.all?(keys, fn key ->
-      Map.get(locks, key, {nil, nil, nil})
-      |> then(fn {lock_pid, _, _} -> lock_pid == pid end)
+      case Map.get(locks, key) do
+        {^pid, _, _} -> true
+        _ -> false
+      end
     end)
   end
 
@@ -148,8 +208,37 @@ defmodule Ximula.Gatekeeper.Server do
   end
 
   defp remove_caller(state, pid) do
-    state.locks
-    |> Map.filter(fn {_key, {key_pid, _, _}} -> key_pid == pid end)
-    |> Enum.reduce(state, fn {key, _lock}, state -> release(state, key) end)
+    state =
+      state.locks
+      |> Map.filter(fn {_key, {key_pid, _, _}} -> key_pid == pid end)
+      |> Enum.reduce(state, fn {key, _lock}, state -> release(state, key) end)
+
+    %{state | waiting: remove_waiting(pid, state.waiting)}
   end
+
+  defp remove_waiting(pid, waiting) do
+    waiting
+    |> Enum.reduce(%{}, fn {key, queue}, acc ->
+      # Filter out entries for the crashed process and demonitor them
+      new_queue =
+        queue
+        |> Enum.reject(fn {{queue_pid, _}, monitor_ref} ->
+          demonitor_waiting(queue_pid, pid, monitor_ref)
+        end)
+
+      # Only keep the key if there are still processes waiting
+      if new_queue != [] do
+        Map.put(acc, key, new_queue)
+      else
+        acc
+      end
+    end)
+  end
+
+  defp demonitor_waiting(pid, pid, monitor_ref) do
+    Process.demonitor(monitor_ref, [:flush])
+    true
+  end
+
+  defp demonitor_waiting(_queue_pid, _pid, _monitor_ref), do: false
 end
