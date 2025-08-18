@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+Realm:
+
+- Gatekeeper: Refactored AccessData and AccessKey to the new named Gatekeeper. See gatekeeper.ex moduledoc for more information
+
 ## 0.3.0
 
 Sim:
