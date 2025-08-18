@@ -5,7 +5,7 @@ A helper library for various simulation helpers.
 ## Content
 
 * Objects: Grid and Torus
-* Realm: Access data
+* Realm: Gatekeeper
 * Sim: Loop, Queue and Simulator
 
 ## Livebook
@@ -20,7 +20,7 @@ by adding `ximula` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ximula, "~> 0.3.0"}
+    {:ximula, "~> 0.4.0"}
   ]
 end
 ```
