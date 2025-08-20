@@ -33,7 +33,7 @@ end
 ```elixir
 defmodule Sim.Data do
   alias Ximula.{Grid, Torus}
-  alias Ximula.AccessData
+  alias Ximula.Gatekeeper.Agent, as: Gatekeeper
   alias Sim.Field
 
   def create(size) do
@@ -45,32 +45,33 @@ defmodule Sim.Data do
     end)
   end
 
-  def get_field({x, y}, pid) do
-    AccessData.get(pid, fn map -> Torus.get(map, x, y) end)
+  def get_field(pid, {x, y}) do
+    Gatekeeper.get(pid, fn map -> Torus.get(map, x, y) end)
   end
 
   def get_all_fields(pid) do
-    AccessData.get(pid, &Grid.values(&1))
+    Gatekeeper.get(pid, &Grid.values(&1))
   end
 
   def positions(pid) do
-    AccessData.get(pid, &Grid.map(&1, fn x, y, _ -> {x, y} end))
+    Gatekeeper.get(pid, &Grid.map(&1, fn x, y, _ -> {x, y} end))
   end
 
-  def lock_field(position, pid) do
-    AccessData.lock_key(position, pid, &Grid.get(&1, &2))
+  def lock_field(pid, position) do
+    Gatekeeper.lock(pid, position, &Grid.get(&1, &2))
   end
 
-  def update_field(field, position, pid) do
-    AccessData.update_key(position, field, pid, &Grid.put(&1, &2, &3))
+  def update_field(pid, position, field) do
+    Gatekeeper.update(pid, position, field, fn grid, {k,v} -> Grid.put(grid, k, v) end)
   end
 end
 ```
 
 ```elixir
-data = Sim.Data.create(10)
-{:ok, proxy} = Ximula.AccessData.start_link(data: data, name: :sim_data)
-Sim.Data.get_field({0, 0}, proxy)
+{:ok, agent} = Agent.start_link(fn -> Sim.Data.create(20) end)
+{:ok, gatekeeper} = Ximula.Gatekeeper.Server.start_link(context: %{agent: agent})
+
+Sim.Data.get_field(gatekeeper, {0, 0})
 ```
 
 ## Simulations
@@ -79,19 +80,15 @@ Sim.Data.get_field({0, 0}, proxy)
 defmodule Sim.Vegetation do
   alias Sim.Data
 
-  def change(position, world) do
-    position
-    |> Data.lock_field(world)
-    |> sim()
-    |> Data.update_field(position, world)
-
+  def change(position, gatekeeper) do
+    field = gatekeeper |> Data.lock_field(position) |> sim()
+    :ok = Data.update_field(gatekeeper, position, field)
     position
   end
 
   def sim(field) do
-    # Process.sleep(5)
     if field.position == {9, 9}, do: raise("Sim Error")
-    put_in(field.vegetation.value, 1)
+    update_in(field.vegetation.value, &(&1 + 1))
   end
 end
 
@@ -212,14 +209,14 @@ end
 ```elixir
 Task.Supervisor.start_link(name: Ximula.Simulator.Task.Supervisor)
 Task.Supervisor.start_link(name: Ximula.Sim.Loop.Task.Supervisor)
-Ximula.Sim.Loop.start_link(sim_args: [proxy: :sim_data])
+Ximula.Sim.Loop.start_link(sim_args: [proxy: gatekeeper])
 ```
 
 ```elixir
 Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
   name: :high,
-  func: {FieldSimulator, :run_queue, [proxy: :sim_data]},
-  interval: 2_000
+  func: {FieldSimulator, :run_queue, [proxy: gatekeeper]},
+  interval: 10_000
 })
 
 # Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
@@ -239,11 +236,30 @@ Ximula.Sim.Loop.add_queue(%Ximula.Sim.Queue{
 require Logger
 Logger.info("START!")
 Ximula.Sim.Loop.start_sim()
-Process.sleep(10_000)
+Process.sleep(22_000)
 Ximula.Sim.Loop.stop_sim()
 Logger.info("END!")
 ```
 
+### Notes
+
+Grid size 10x10
+
+Whole queue took about 700ms
+
+vegetation does +1 -> 5 -10 ms
+
+herbivore does nothing -> 3- 5 ms
+
+predator sleep 10ms -> ~88ms
+
+factory sleep 20ms -> ~168ms
+
+transport sleep 50ms -> ~410ms
+
+**all overhead about 30 - 100 μs per thread**
+
 ```elixir
-Sim.Data.all(map_pid)
+Sim.Data.get_field(gatekeeper, {0, 0}) |> dbg()
+Sim.Data.get_field(gatekeeper, {9, 9}) |> dbg()
 ```
