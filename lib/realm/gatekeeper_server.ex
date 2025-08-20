@@ -109,7 +109,8 @@ defmodule Ximula.Gatekeeper.Server do
         {:reply, result, state}
 
       false ->
-        {:reply, {:error, "locks must be owned by the caller"}, remove_caller(state, pid)}
+        {:reply, {:error, "locks #{inspect(keys)} must be owned by the caller"},
+         remove_caller(state, pid)}
     end
   end
 
@@ -120,7 +121,7 @@ defmodule Ximula.Gatekeeper.Server do
         {:reply, :ok, state}
 
       false ->
-        {:reply, {:error, "locks must be owned by the caller"}, state}
+        {:reply, {:error, "locks #{inspect(keys)} must be owned by the caller"}, state}
     end
   end
 

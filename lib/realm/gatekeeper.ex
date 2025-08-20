@@ -101,7 +101,7 @@ defmodule Ximula.Gatekeeper do
     GenServer.call(server, {:update, data, fun})
   end
 
-  def update(server \\ __MODULE__, {key, value}, fun) do
+  def update(server \\ __MODULE__, key, value, fun) do
     update_multi(server, [{key, value}], fun)
   end
 
