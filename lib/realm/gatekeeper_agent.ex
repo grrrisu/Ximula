@@ -33,8 +33,8 @@ defmodule Ximula.Gatekeeper.Agent do
   Use `lock/3` to acquire a lock and read atomically:
 
       # Lock a key and read its value
-      value = Ximula.Gatekeeper.Agent.lock(gatekeeper, :my_key, fn state, key ->
-        Map.get(state, key)
+      value = Ximula.Gatekeeper.Agent.lock(gatekeeper, :my_key, fn state ->
+        Map.get(state, :my_key)
       end)
 
       # Lock multiple keys
@@ -50,8 +50,8 @@ defmodule Ximula.Gatekeeper.Agent do
       :ok = Ximula.Gatekeeper.Agent.request_lock(gatekeeper, :my_key)
 
       # Then update
-      :ok = Ximula.Gatekeeper.Agent.update(gatekeeper, {:my_key, "new_value"}, fn state, {key, value} ->
-        Map.put(state, key, value)
+      :ok = Ximula.Gatekeeper.Agent.update(gatekeeper, :my_key, "new_value", fn state ->
+        Map.put(state, :my_key, "new_value")
       end)
 
   ## Batch Updates
@@ -63,8 +63,8 @@ defmodule Ximula.Gatekeeper.Agent do
 
       # Update multiple keys atomically
       data = [key1: "value1", key2: "value2"]
-      :ok = Ximula.Gatekeeper.Agent.update_multi(gatekeeper, data, fn state, updates ->
-        Enum.reduce(updates, state, fn {key, value}, acc ->
+      :ok = Ximula.Gatekeeper.Agent.update_multi(gatekeeper, data, fn state ->
+        Enum.reduce(data, state, fn {key, value}, acc ->
           Map.put(acc, key, value)
         end)
       end)
@@ -78,6 +78,17 @@ defmodule Ximula.Gatekeeper.Agent do
 
       # Release locks when done
       :ok = Ximula.Gatekeeper.Agent.release(gatekeeper, [:key1, :key2])
+
+  ## Supervision
+
+  You can create a child specification for an Agent with initial data using `agent_spec/2`:
+
+      children = [
+        Ximula.Gatekeeper.Agent.agent_spec(MyDataModule, data: %{}, name: :my_agent),
+        {Ximula.Gatekeeper.Server, name: :my_gatekeeper, context: %{agent: :my_agent}}
+      ]
+
+      Supervisor.start_link(children, strategy: :rest_for_one)
 
   ## Error Handling
 
@@ -101,6 +112,15 @@ defmodule Ximula.Gatekeeper.Agent do
   alias Ximula.Gatekeeper.Server
   alias Ximula.Gatekeeper
 
+  # returns a child spec for an Agent with initial data
+  # Ximula.Gatekeeper.Agent.agent_spec(MyData, data: %{}, name: :data_123)
+  def agent_spec(module, opts \\ []) do
+    %{
+      id: module,
+      start: {Agent, :start_link, [fn -> opts[:data] end, [name: opts[:name] || module]]}
+    }
+  end
+
   def start_link(opts \\ []) do
     Server.start_link(Keyword.merge(opts, name: opts[:name]))
   end
@@ -110,29 +130,41 @@ defmodule Ximula.Gatekeeper.Agent do
     Agent.get(context.agent, fun)
   end
 
+  def direct_set(server \\ __MODULE__, fun) do
+    context = Gatekeeper.get_context(server)
+    Agent.update(context.agent, fun)
+  end
+
   def request_lock(server \\ __MODULE__, keys) do
     Gatekeeper.request_lock(server, keys)
   end
 
+  def lock(server \\ __MODULE__, keys, fun)
+
   # Ximula.Gatekeeper.Agent.lock(agent, :a, &Map.get(&1, &2))
-  def lock(server \\ __MODULE__, keys, fun) do
+  def lock(server, keys, fun) when is_list(keys) do
     context = Gatekeeper.get_context(server)
     Gatekeeper.lock(server, keys, fn key -> Agent.get(context.agent, &fun.(&1, key)) end)
   end
 
-  # Ximula.Gatekeeper.Agent.update(agent, :a, 42, fn state, {key, value} -> Map.update(state, key, value) end)
+  def lock(server, keys, fun) do
+    context = Gatekeeper.get_context(server)
+    Gatekeeper.lock(server, keys, fn _key -> Agent.get(context.agent, &fun.(&1)) end)
+  end
+
+  # Ximula.Gatekeeper.Agent.update(agent, :a, 42, fn state -> Map.update(state, :a, 42) end)
   def update(server \\ __MODULE__, key, value, fun) do
-    Gatekeeper.update(server, key, value, fn {key, value}, context ->
-      Agent.update(context.agent, &fun.(&1, {key, value}))
+    Gatekeeper.update(server, key, value, fn _key_value, context ->
+      Agent.update(context.agent, &fun.(&1))
     end)
   end
 
-  # Ximula.Gatekeeper.Agent.updat_multi(agent, [{:a, 42}, {:b, 43}], fn state, list ->
-  #   Enum.reduce(state, fn {key, value}, state -> Map.update(state, key, value) end)
+  # Ximula.Gatekeeper.Agent.updat_multi(agent, [{:a, 42}, {:b, 43}] = list, fn state ->
+  #   Enum.reduce(list, state, fn {key, value}, state -> Map.update(state, key, value) end)
   # end
   def update_multi(server \\ __MODULE__, data, fun) do
-    Gatekeeper.update_multi(server, data, fn data, context ->
-      Agent.update(context.agent, &fun.(&1, data))
+    Gatekeeper.update_multi(server, data, fn _data, context ->
+      Agent.update(context.agent, &fun.(&1))
     end)
   end
 

@@ -58,11 +58,11 @@ defmodule Sim.Data do
   end
 
   def lock_field(pid, position) do
-    Gatekeeper.lock(pid, position, &Grid.get(&1, &2))
+    Gatekeeper.lock(pid, position, &Grid.get(&1, position))
   end
 
   def update_field(pid, position, field) do
-    Gatekeeper.update(pid, position, field, fn grid, {k,v} -> Grid.put(grid, k, v) end)
+    Gatekeeper.update(pid, position, field, &Grid.put(&1, position, field))
   end
 end
 ```

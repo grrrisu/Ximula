@@ -22,18 +22,22 @@ defmodule Ximula.Gatekeeper.AgentTest do
     Gatekeeper.request_lock(pid, key)
   end
 
+  def lock(pid, keys) when is_list(keys) do
+    Gatekeeper.lock(pid, keys, &Grid.get(&1, &2))
+  end
+
   def lock(pid, key) do
-    Gatekeeper.lock(pid, key, &Grid.get(&1, &2))
+    Gatekeeper.lock(pid, key, &Grid.get(&1, key))
   end
 
   def update(pid, key, value) do
-    Gatekeeper.update(pid, key, value, fn grid, {key, value} ->
+    Gatekeeper.update(pid, key, value, fn grid ->
       Grid.put(grid, key, value)
     end)
   end
 
   def update_multi(pid, data) do
-    Gatekeeper.update_multi(pid, data, fn grid, data ->
+    Gatekeeper.update_multi(pid, data, fn grid ->
       Enum.reduce(data, grid, fn {key, value}, grid -> Grid.put(grid, key, value) end)
     end)
   end
@@ -71,8 +75,8 @@ defmodule Ximula.Gatekeeper.AgentTest do
 
   test "lock and update multi", %{pid: pid} do
     :ok = request_lock(pid, [{0, 0}, {1, 1}])
-    update_fun = &Enum.reduce(&2, &1, fn {key, value}, grid -> Grid.put(grid, key, value) end)
     data = [{{0, 0}, 100}, {{1, 1}, 111}]
+    update_fun = &Enum.reduce(data, &1, fn {key, value}, grid -> Grid.put(grid, key, value) end)
     assert :ok == Gatekeeper.update_multi(pid, data, update_fun)
     assert [100, 111] == Gatekeeper.get(pid, &Grid.filter(&1, fn x, y, _v -> x == y end))
   end
@@ -259,6 +263,7 @@ defmodule Ximula.Gatekeeper.AgentTest do
           get(pid, {1, 2})
         end),
         Task.async(fn ->
+          Process.sleep(10)
           request_lock(pid, [{0, 2}, {1, 2}])
           Process.sleep(100)
           :ok = update_multi(pid, [{{0, 2}, 200}, {{1, 2}, 210}])
