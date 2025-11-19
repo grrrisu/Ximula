@@ -41,9 +41,15 @@ defmodule Ximula.Sim.Pipeline do
   end
 
   def execute(%{stages: stages}, %{data: data, opts: opts} = result) do
-    Enum.reduce(stages, result, fn %{executor: executor, steps: steps}, result ->
-      executor.execute_stage(steps, result)
-    end)
+    result =
+      Enum.reduce(stages, result, fn %{executor: executor, steps: steps}, result ->
+        case executor.execute_stage(steps, result) do
+          {:ok, result} -> %{data: result, opts: opts}
+          {:error, reason} -> raise "sim failed with #{inspect(reason)} with #{inspect(opts)}"
+        end
+      end)
+
+    {:ok, result.data}
   end
 
   # ---- claude ---

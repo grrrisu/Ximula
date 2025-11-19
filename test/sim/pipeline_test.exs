@@ -83,9 +83,13 @@ defmodule Ximula.Sim.PipelineTest do
     Change.set(change, :counter, counter * multiplier)
   end
 
+  def crash(%Change{} = change) do
+    raise "crash in step"
+  end
+
   describe "executing pipelines" do
     setup do
-      supervisor = start_supervised!({Task.Supervisor, name: Simulator.Task.Supervisor})
+      supervisor = start_supervised!({Task.Supervisor, name: PipelineTest.Supervisor})
       %{supervisor: supervisor}
     end
 
@@ -112,10 +116,38 @@ defmodule Ximula.Sim.PipelineTest do
         |> Pipeline.add_step(__MODULE__, :add_multiplier)
         |> Pipeline.add_step(__MODULE__, :multiply_counter)
 
+      {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
+
+      assert final_state.counter == (10 + 1) * 3
+    end
+
+    test "executes multiple stage", %{supervisor: supervisor} do
+      initial_state = %{data: %{counter: 10}, opts: [tick: 0, supervisor: supervisor]}
+
+      pipeline =
+        Pipeline.new_pipeline()
+        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_step(__MODULE__, :inc_counter)
+        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_step(__MODULE__, :add_multiplier)
+        |> Pipeline.add_step(__MODULE__, :multiply_counter)
 
       {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
 
       assert final_state.counter == (10 + 1) * 3
+    end
+
+    test "crashes stage", %{supervisor: supervisor} do
+      initial_state = %{data: %{counter: 10}, opts: [tick: 0, supervisor: supervisor]}
+
+      pipeline =
+        Pipeline.new_pipeline()
+        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_step(__MODULE__, :crash)
+
+      assert_raise(RuntimeError, ~r/sim failed with "crash in step"/, fn ->
+        Pipeline.execute(pipeline, initial_state)
+      end)
     end
   end
 end
