@@ -70,18 +70,27 @@ defmodule Ximula.Sim.PipelineTest do
     end
   end
 
+  def inc_counter(%{data: %{counter: counter} = data, changes: changes}) do
+    %{data: data, changes: Map.merge(changes, %{counter: 1})}
+  end
+
   describe "executing pipelines" do
-    test "executes single stage with single step" do
-      initial_state = %{data: %{soil_quality: 100}, meta: %{tick: 0}}
+    setup do
+      supervisor = start_supervised!({Task.Supervisor, name: Simulator.Task.Supervisor})
+      %{supervisor: supervisor}
+    end
+
+    test "executes single stage with single step", %{supervisor: supervisor} do
+      initial_state = %{data: %{counter: 10}, opts: [tick: 0, supervisor: supervisor]}
 
       pipeline =
         Pipeline.new_pipeline()
         |> Pipeline.add_stage(executor: SingleExecutor)
-        |> Pipeline.add_step(CropSimulator, :check_soil)
+        |> Pipeline.add_step(__MODULE__, :inc_counter)
 
       {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
 
-      assert final_state.soil_quality == 90
+      assert final_state.counter == 11
     end
   end
 end
