@@ -31,4 +31,10 @@ defmodule Ximula.Sim.ChangeTest do
     change = Change.set(change, :step, 5)
     assert Change.get(change, :step) == 5
   end
+
+  test "reduce changes" do
+    change = %Change{data: %{counter: 5}, changes: %{counter: 2, step: 4}}
+    result = Change.reduce(change)
+    assert result == %{counter: 7}
+  end
 end

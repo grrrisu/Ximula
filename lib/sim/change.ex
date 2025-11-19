@@ -1,5 +1,4 @@
 defmodule Ximula.Sim.Change do
-
   defstruct data: %{}, changes: %{}
 
   alias Ximula.Sim.Change
@@ -9,7 +8,7 @@ defmodule Ximula.Sim.Change do
   end
 
   def change_by(%Change{changes: changes} = change, key, delta) when is_number(delta) do
-    value =  Map.get(changes, key, 0)
+    value = Map.get(changes, key, 0)
     %Change{change | changes: Map.put(changes, key, value + delta)}
   end
 
@@ -20,7 +19,7 @@ defmodule Ximula.Sim.Change do
   end
 
   def reduce(%Change{data: data, changes: changes}) do
-    changes
+    data
     |> Map.keys()
     |> Enum.reduce(data, fn key, data ->
       change = Map.get(changes, key)

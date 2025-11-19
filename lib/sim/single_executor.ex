@@ -33,8 +33,16 @@ defmodule Ximula.Sim.SingleExecutor do
 
   defp handle_sim_results(%{ok: ok, exit: failed}) do
     cond do
-      Enum.empty?(ok) -> {:error, List.first(failed)}
-      Enum.any?(ok) -> {:ok, List.first(ok)}
+      Enum.empty?(ok) ->
+        {:error,
+         failed
+         |> Enum.map(fn {data, {exception, stacktrace}} ->
+           Exception.normalize(:error, exception, stacktrace) |> Exception.message()
+         end)
+         |> List.first()}
+
+      Enum.any?(ok) ->
+        {:ok, List.first(ok)}
     end
   end
 
