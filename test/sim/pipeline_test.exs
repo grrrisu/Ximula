@@ -1,8 +1,7 @@
 defmodule Ximula.Sim.PipelineTest do
   use ExUnit.Case, async: true
 
-  alias Ximula.Sim.Pipeline
-  alias Ximula.Sim.SingleExecutor
+  alias Ximula.Sim.{Change, Pipeline, SingleExecutor}
 
   describe "building pipelines" do
     test "creates empty pipeline" do
@@ -70,8 +69,18 @@ defmodule Ximula.Sim.PipelineTest do
     end
   end
 
-  def inc_counter(%{data: %{counter: counter} = data, changes: changes}) do
-    %{data: data, changes: Map.merge(changes, %{counter: 1})}
+  def inc_counter(%Change{} = change) do
+    Change.change_by(change, :counter, 1)
+  end
+
+  def add_multiplier(%Change{} = change) do
+    Change.set(change, :multiplier, 3)
+  end
+
+  def multiply_counter(%Change{} = change) do
+    counter = Change.get(change, :counter)
+    multiplier = Change.get(change, :multiplier)
+    Change.set(change, :counter, counter * multiplier)
   end
 
   describe "executing pipelines" do
@@ -91,6 +100,22 @@ defmodule Ximula.Sim.PipelineTest do
       {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
 
       assert final_state.counter == 11
+    end
+
+    test "executes single stage with multiple steps", %{supervisor: supervisor} do
+      initial_state = %{data: %{counter: 10}, opts: [tick: 0, supervisor: supervisor]}
+
+      pipeline =
+        Pipeline.new_pipeline()
+        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_step(__MODULE__, :inc_counter)
+        |> Pipeline.add_step(__MODULE__, :add_multiplier)
+        |> Pipeline.add_step(__MODULE__, :multiply_counter)
+
+
+      {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
+
+      assert final_state.counter == (10 + 1) * 3
     end
   end
 end
