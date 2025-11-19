@@ -34,7 +34,9 @@ defmodule Ximula.Simulator do
         supervisor \\ Ximula.Simulator.Task.Supervisor,
         opts \\ []
       ) do
-    sim_entities(entities, simulation, supervisor, opts)
+    entities
+    |> List.wrap()
+    |> sim_entities(simulation, supervisor, opts)
     |> Stream.reject(&not_changed(&1))
     |> Enum.reduce(%{ok: [], exit: []}, &group_by_state/2)
   end

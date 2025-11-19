@@ -40,7 +40,7 @@ defmodule Ximula.Sim.Pipeline do
     end)
   end
 
-  def execute(%{stages: stages}, %{data: data, meta: meta} = result) do
+  def execute(%{stages: stages}, %{data: data, opts: opts} = result) do
     Enum.reduce(stages, result, fn %{executor: executor, steps: steps}, result ->
       executor.execute_stage(steps, result)
     end)
