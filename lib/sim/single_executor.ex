@@ -1,5 +1,6 @@
 defmodule Ximula.Sim.SingleExecutor do
   alias Ximula.Simulator
+  alias Ximula.Sim.Change
 
   def execute_stage(steps, %{data: data, opts: opts}) do
     # Grid.get_positions
@@ -18,14 +19,14 @@ defmodule Ximula.Sim.SingleExecutor do
 
     Enum.reduce(
       steps,
-      %{data: data, changes: %{}},
-      fn %{module: module, function: function}, result ->
-        result = apply(module, function, [result])
-        notify_step_observesrs(result)
-        result
+      %Change{data: data},
+      fn %{module: module, function: function}, change ->
+        change = apply(module, function, [change])
+        notify_step_observesrs(change)
+        change
       end
     )
-    |> reduce_changes()
+    |> Change.reduce()
 
     # Gatekeeper.update data.keys
   end
@@ -41,20 +42,6 @@ defmodule Ximula.Sim.SingleExecutor do
     results
   end
 
-  def notify_step_observesrs(%{data: data, changes: changes}) do
-  end
-
-  def reduce_changes(%{data: data, changes: changes}) do
-    changes
-    |> Map.keys()
-    |> Enum.reduce(data, fn key, data ->
-      change = Map.get(changes, key)
-      origin = Map.get(data, key)
-      Map.put(data, key, reduce_value(origin, change))
-    end)
-  end
-
-  defp reduce_value(origin, change) when is_number(origin) and is_number(change) do
-    origin + change
+  def notify_step_observesrs(%Change{data: data, changes: changes}) do
   end
 end
