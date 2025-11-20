@@ -4,7 +4,10 @@ defmodule Ximula.Sim.Change do
   alias Ximula.Sim.Change
 
   def get(%Change{data: data, changes: changes}, key) do
-    Map.get(data, key, 0) + Map.get(changes, key, 0)
+    case Map.get(data, key) do
+      nil -> Map.get(changes, key)
+      origin when is_number(origin) -> origin + Map.get(changes, key, 0)
+    end
   end
 
   def change_by(%Change{changes: changes} = change, key, delta) when is_number(delta) do
@@ -23,10 +26,12 @@ defmodule Ximula.Sim.Change do
     |> Map.keys()
     |> Enum.reduce(data, fn key, data ->
       change = Map.get(changes, key)
-      origin = Map.get(data, key, 0)
+      origin = Map.get(data, key)
       Map.put(data, key, reduce_value(origin, change))
     end)
   end
+
+  defp reduce_value(nil, change), do: change
 
   defp reduce_value(origin, change) when is_number(origin) and is_number(change) do
     origin + change
