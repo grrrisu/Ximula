@@ -36,7 +36,7 @@ defmodule Ximula.Sim.SingleExecutor do
       Enum.empty?(ok) ->
         {:error,
          failed
-         |> Enum.map(fn {data, {exception, stacktrace}} ->
+         |> Enum.map(fn {_data, {exception, stacktrace}} ->
            Exception.normalize(:error, exception, stacktrace) |> Exception.message()
          end)
          |> List.first()}

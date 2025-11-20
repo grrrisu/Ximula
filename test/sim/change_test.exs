@@ -3,7 +3,12 @@ defmodule Ximula.Sim.ChangeTest do
 
   alias Ximula.Sim.Change
 
-  test "get value" do
+  test "get nil" do
+    change = %Change{data: %{counter: nil}}
+    assert Change.get(change, :counter) == nil
+  end
+
+  test "get number" do
     change = %Change{data: %{counter: 5}}
     assert Change.get(change, :counter) == 5
   end
@@ -33,8 +38,12 @@ defmodule Ximula.Sim.ChangeTest do
   end
 
   test "reduce changes" do
-    change = %Change{data: %{counter: 5}, changes: %{counter: 2, step: 4}}
+    change = %Change{
+      data: %{counter: 5, new_stuff: nil},
+      changes: %{counter: 2, temp: 4, new_stuff: 7}
+    }
+
     result = Change.reduce(change)
-    assert result == %{counter: 7}
+    assert result == %{counter: 7, new_stuff: 7}
   end
 end
