@@ -6,7 +6,7 @@ A helper library for various simulation helpers.
 
 * Objects: Grid and Torus
 * Realm: Gatekeeper
-* Sim: Loop, Queue and Simulator
+* Sim: Loop, Queue, Pipeline with stage and steps, Change and TaskRunner
 
 ## Livebook
 

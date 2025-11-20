@@ -7,10 +7,10 @@ defmodule Ximula.Sim.Pipeline do
       pipeline =
         new_pipeline()
         |> add_stage(executor: GridExecutor, reducer: SumReducer)
-        |> add_step(CropSimulator, :check_soil)
-        |> add_step(CropSimulator, :grow_plants)
+        |> add_step(CropSimulation, :check_soil)
+        |> add_step(CropSimulation, :grow_plants)
         |> add_stage(executor: SimpleExecutor)
-        |> add_step(PopulationSimulator, :consume_food)
+        |> add_step(PopulationSimulation, :consume_food)
 
       initial_state = %{data: root, meta: %{tick: 0}}
       {:ok, final_state} = Ximula.Sim.Pipeline.execute(pipeline, initial_state)

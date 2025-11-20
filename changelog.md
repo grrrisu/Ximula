@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+- rename Ximula.Simulator to Ximula.Sim.TaskRunner
+- Sim pipelines definition, with stages and steps
+- execution of stages in their own tasks, while steps within a stage run in the same ones
+- DSL for sim pipelines:
+
+```elixir
+
+```
+
 ## 0.4.0
 
 Realm:

@@ -1,8 +1,8 @@
-defmodule Ximula.SimulatorTest do
+defmodule Ximula.Sim.TaskRunnerTest do
   use ExUnit.Case, async: true
 
-  alias Ximula.SimulatorTest
-  alias Ximula.Simulator
+  alias Ximula.Sim.TaskRunnerTest
+  alias Ximula.Sim.TaskRunner
 
   def sim_failed(entity) do
     if rem(entity.id, 3) == 0,
@@ -17,13 +17,13 @@ defmodule Ximula.SimulatorTest do
   end
 
   setup do
-    supervisor = start_supervised!({Task.Supervisor, name: Simulator.Task.Supervisor})
+    supervisor = start_supervised!({Task.Supervisor, name: Sim.TaskRunner.Task.Supervisor})
     %{supervisor: supervisor}
   end
 
   test "returns results grouped by success and failed", %{supervisor: supervisor} do
     entities = 1..6 |> Enum.map(&%{id: &1, value: &1})
-    results = Simulator.sim(entities, {SimulatorTest, :sim_failed, []}, supervisor)
+    results = TaskRunner.sim(entities, {TaskRunnerTest, :sim_failed, []}, supervisor)
 
     assert Enum.map(results.ok, & &1.id) |> Enum.sort() == [1, 2, 4, 5]
     assert Enum.member?(results.ok, %{id: 1, value: 11})
@@ -33,7 +33,7 @@ defmodule Ximula.SimulatorTest do
 
   test "returns only changed entities", %{supervisor: supervisor} do
     entities = 1..6 |> Enum.map(&%{id: &1, value: &1})
-    results = Simulator.sim(entities, {SimulatorTest, :sim_changed, []}, supervisor)
+    results = TaskRunner.sim(entities, {TaskRunnerTest, :sim_changed, []}, supervisor)
 
     assert Enum.map(results.ok, & &1.id) |> Enum.sort() == [2, 4, 6]
     assert Enum.member?(results.ok, %{id: 6, value: 16})

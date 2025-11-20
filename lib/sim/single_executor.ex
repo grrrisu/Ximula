@@ -1,10 +1,9 @@
 defmodule Ximula.Sim.SingleExecutor do
-  alias Ximula.Simulator
-  alias Ximula.Sim.Change
+  alias Ximula.Sim.{Change, TaskRunner}
 
   def execute_stage(steps, %{data: data, opts: opts}) do
     # Grid.get_positions
-    Simulator.sim(
+    TaskRunner.sim(
       data,
       {__MODULE__, :execute_steps, [[steps: steps]]},
       opts[:supervisor],
