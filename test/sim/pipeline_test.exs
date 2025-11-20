@@ -1,7 +1,8 @@
 defmodule Ximula.Sim.PipelineTest do
   use ExUnit.Case, async: true
 
-  alias Ximula.Sim.{Change, Pipeline, SingleExecutor}
+  alias Ximula.Sim.{Change, Pipeline}
+  alias Ximula.Sim.StageExecutor.Single
 
   describe "building pipelines" do
     test "creates empty pipeline" do
@@ -12,18 +13,18 @@ defmodule Ximula.Sim.PipelineTest do
     test "adds single stage" do
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
 
       assert length(pipeline.stages) == 1
-      assert hd(pipeline.stages).executor == SingleExecutor
+      assert hd(pipeline.stages).executor == Single
       assert hd(pipeline.stages).steps == []
     end
 
     test "adds multiple stages" do
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
+        |> Pipeline.add_stage(executor: Single)
 
       assert length(pipeline.stages) == 2
     end
@@ -31,7 +32,7 @@ defmodule Ximula.Sim.PipelineTest do
     test "adds steps to current stage" do
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(CropSimulation, :check_soil)
         |> Pipeline.add_step(CropSimulation, :grow_plants)
 
@@ -44,9 +45,9 @@ defmodule Ximula.Sim.PipelineTest do
     test "steps added to correct stage" do
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(CropSimulation, :check_soil)
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(PopulationSimulation, :consume_food)
 
       assert length(Enum.at(pipeline.stages, 0).steps) == 1
@@ -57,13 +58,13 @@ defmodule Ximula.Sim.PipelineTest do
       pipeline =
         Pipeline.new_pipeline()
         |> Pipeline.add_stage(
-          executor: SingleExecutor,
+          executor: Single,
           reducer: SimpleReducer,
           on_error: :continue
         )
 
       stage = hd(pipeline.stages)
-      assert stage.executor == SingleExecutor
+      assert stage.executor == Single
       assert stage.reducer == SimpleReducer
       assert stage.on_error == :continue
     end
@@ -98,7 +99,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(__MODULE__, :inc_counter)
 
       {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
@@ -111,7 +112,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(__MODULE__, :inc_counter)
         |> Pipeline.add_step(__MODULE__, :add_multiplier)
         |> Pipeline.add_step(__MODULE__, :multiply_counter)
@@ -126,9 +127,9 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(__MODULE__, :inc_counter)
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(__MODULE__, :add_multiplier)
         |> Pipeline.add_step(__MODULE__, :multiply_counter)
 
@@ -142,7 +143,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         Pipeline.new_pipeline()
-        |> Pipeline.add_stage(executor: SingleExecutor)
+        |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(__MODULE__, :crash)
 
       assert_raise(RuntimeError, ~r/sim failed with "crash in step"/, fn ->
