@@ -2,11 +2,11 @@ defmodule Ximula.Sim.Loop do
   @moduledoc """
   The simulation loop server, executes each queue in the given interval
 
-  Add the task supervisors (one for the simulator and one for the loop) to your supervision tree
+  Add the task supervisors (one for the task runner and one for the loop) to your supervision tree
 
   ```
   children = [
-    {Task.Supervisor, name: Ximula.Simulator.Task.Supervisor},
+    {Task.Supervisor, name: Ximula.Sim.TaskRunner.Supervisor},
     {Task.Supervisor, name: Ximula.Sim.Loop.Task.Supervisor},
     {Ximula.Sim.Loop}
   ]
@@ -16,8 +16,7 @@ defmodule Ximula.Sim.Loop do
   """
   use GenServer
 
-  alias Ximula.Sim.Queue
-  alias Ximula.Simulator
+  alias Ximula.Sim.{Queue, TaskRunner}
 
   require Logger
 
@@ -178,7 +177,7 @@ defmodule Ximula.Sim.Loop do
 
   defp execute(queue, supervisor, sim_args) do
     Task.Supervisor.async_nolink(supervisor, fn ->
-      Simulator.benchmark(fn ->
+      TaskRunner.benchmark(fn ->
         {execute_sim_function(queue, sim_args), queue}
       end)
     end)

@@ -1,4 +1,4 @@
-defmodule Ximula.Simulator do
+defmodule Ximula.Sim.TaskRunner do
   @moduledoc """
   Takes a list of entities to run a simulation function on them and
   returns the results grouped by :ok (success) and :exit (failed).
@@ -8,7 +8,7 @@ defmodule Ximula.Simulator do
 
   ```
   children = [
-    {Task.Supervisor, name: Ximula.Simulator.Task.Supervisor}
+    {Task.Supervisor, name: Ximula.Sim.TaskRunner.Supervisor}
   ]
 
   Supervisor.start_link(children, strategy: :one_for_one)
@@ -23,7 +23,7 @@ defmodule Ximula.Simulator do
 
   simulation: simulation function in form of {module, func, args}
 
-  supervisor: Task.Supervisor, default: Ximula.Simulator.Task.Supervisor
+  supervisor: Task.Supervisor, default: Ximula.Sim.TaskRunner.Supervisor
 
   ## Options:
     * max_concurrency: set max concurrent tasks executing the sim function
@@ -31,7 +31,7 @@ defmodule Ximula.Simulator do
   def sim(
         entities,
         simulation,
-        supervisor \\ Ximula.Simulator.Task.Supervisor,
+        supervisor \\ Ximula.Sim.TaskRunner.Supervisor,
         opts \\ []
       ) do
     entities

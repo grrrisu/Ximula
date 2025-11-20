@@ -32,8 +32,8 @@ defmodule Ximula.Sim.PipelineTest do
       pipeline =
         Pipeline.new_pipeline()
         |> Pipeline.add_stage(executor: SingleExecutor)
-        |> Pipeline.add_step(CropSimulator, :check_soil)
-        |> Pipeline.add_step(CropSimulator, :grow_plants)
+        |> Pipeline.add_step(CropSimulation, :check_soil)
+        |> Pipeline.add_step(CropSimulation, :grow_plants)
 
       stage = hd(pipeline.stages)
       assert length(stage.steps) == 2
@@ -45,9 +45,9 @@ defmodule Ximula.Sim.PipelineTest do
       pipeline =
         Pipeline.new_pipeline()
         |> Pipeline.add_stage(executor: SingleExecutor)
-        |> Pipeline.add_step(CropSimulator, :check_soil)
+        |> Pipeline.add_step(CropSimulation, :check_soil)
         |> Pipeline.add_stage(executor: SingleExecutor)
-        |> Pipeline.add_step(PopulationSimulator, :consume_food)
+        |> Pipeline.add_step(PopulationSimulation, :consume_food)
 
       assert length(Enum.at(pipeline.stages, 0).steps) == 1
       assert length(Enum.at(pipeline.stages, 1).steps) == 1

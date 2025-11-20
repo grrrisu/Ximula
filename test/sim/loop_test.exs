@@ -55,10 +55,10 @@ defmodule Ximula.Sim.LoopTest do
 
   describe "start and stop" do
     setup do
-      simulator_tasks = start_supervised!({Task.Supervisor, name: Simulator.Task.Supervisor})
+      start_supervised!({Task.Supervisor, name: LoopTest.TaskRunner.Supervisor})
       loop_tasks = start_supervised!({Task.Supervisor, name: Sim.Loop.Task.Supervisor})
       loop = start_supervised!({Loop, [supervisor: loop_tasks]})
-      %{simulator_tasks: simulator_tasks, loop_tasks: loop_tasks, loop: loop}
+      %{loop_tasks: loop_tasks, loop: loop}
     end
 
     @tag ci: :skip
