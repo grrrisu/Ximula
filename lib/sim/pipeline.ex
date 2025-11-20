@@ -40,7 +40,7 @@ defmodule Ximula.Sim.Pipeline do
     end)
   end
 
-  def execute(%{stages: stages}, %{data: data, opts: opts} = result) do
+  def execute(%{stages: stages}, %{data: _data, opts: opts} = result) do
     result =
       Enum.reduce(stages, result, fn %{executor: executor, steps: steps}, result ->
         case executor.execute_stage(steps, result) do
@@ -50,41 +50,5 @@ defmodule Ximula.Sim.Pipeline do
       end)
 
     {:ok, result.data}
-  end
-
-  # ---- claude ---
-
-  # Execute entire pipeline
-  def execute(pipeline, initial_state, _tick) do
-    Enum.reduce_while(pipeline.stages, {:ok, initial_state}, fn stage, {:ok, state} ->
-      case execute_stage(stage, state) do
-        {:ok, new_state} ->
-          {:cont, {:ok, new_state}}
-
-          # {:error, strategy, rolled_back_state} ->
-          #   raise "Error in stage execution: #{inspect(strategy)}"
-          #   handle_error(strategy, rolled_back_state)
-      end
-    end)
-  end
-
-  # Execute single stage (transaction boundary)
-  defp execute_stage(stage, state) do
-    pre_stage_state = state
-
-    try do
-      # Executor runs all steps, accumulates changes
-      _changes = stage.executor.execute_steps(stage.steps, state)
-
-      # Reducer aggregates changes
-      # final_changes = stage.reducer.reduce(changes)
-
-      # Apply changes atomically
-      # new_state = apply_changes(state, final_changes)
-      new_state = state
-      {:ok, new_state}
-    rescue
-      _error -> {:error, stage.on_error, pre_stage_state}
-    end
   end
 end

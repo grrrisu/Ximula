@@ -1,4 +1,4 @@
-defmodule Ximula.Sim.SingleExecutor do
+defmodule Ximula.Sim.StageExecutor.Single do
   alias Ximula.Sim.{Change, TaskRunner}
 
   def execute_stage(steps, %{data: data, opts: opts}) do
