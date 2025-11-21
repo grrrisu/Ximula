@@ -84,6 +84,12 @@ defmodule Ximula.Grid do
 
   # return the grid as a list
   # note: the order of the values may be in random order
+  def positions(grid) do
+    map(grid, fn x, y, _value -> {x, y} end)
+  end
+
+  # return the grid as a list
+  # note: the order of the values may be in random order
   def positions_and_values(grid) do
     map(grid, fn x, y, value -> {{x, y}, value} end)
   end
