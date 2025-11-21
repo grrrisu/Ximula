@@ -7,6 +7,7 @@ defmodule Ximula.Sim.Change do
     case Map.get(data, key) do
       nil -> Map.get(changes, key)
       origin when is_number(origin) -> origin + Map.get(changes, key, 0)
+      origin -> Map.get(changes, key) || origin
     end
   end
 
@@ -31,9 +32,11 @@ defmodule Ximula.Sim.Change do
     end)
   end
 
-  defp reduce_value(nil, change), do: change
-
   defp reduce_value(origin, change) when is_number(origin) and is_number(change) do
     origin + change
   end
+
+  defp reduce_value(origin, nil), do: origin
+
+  defp reduce_value(_origin, change), do: change
 end

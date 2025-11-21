@@ -5,6 +5,45 @@ A composable, pipeline-based simulation library for Elixir that separates simula
 
 ---
 
+## Three Levels of Execution
+
+### Queue / Loop (Timing & Orchestration)
+* **Purpose**: Schedules when pipelines run
+* **Properties**: priority, interval
+* **Implementation**: GenServer with queue definitions
+* **Execution**: Each queue runs in its own supervised task
+* **API**: `Loop.start_queues(queues)`
+* **Example**: Run world simulation every 1000ms
+
+### Pipeline / Stage (Coordination & Execution Strategy)
+* **Purpose**: Defines what runs and how (sequential stages)
+* **Properties**: stage sequence, stage executor, reducer
+* **Execution**: 
+  - Calls `TaskRunner` for parallel execution
+  - Handles Gatekeeper locking (via `StageExecutor.Grid`)
+  - Aggregates and applies changes
+* **API**: `Pipeline.execute(pipeline, state)`
+* **Example**: Stage 1: grow_crops → Stage 2: consume_food
+
+### Simulation / Step (Pure Logic)
+* **Purpose**: Implements game/simulation rules
+* **Properties**: Pure functions, no side effects
+* **Signature**: `def step(%Change{data, changes}, opts)`
+* **Returns**: `%Change{changes: %{key: value}}`
+* **API**: `Vegetation.grow_crops(change)`
+* **Example**: Calculate crop growth based on water + soil
+
+**The execution flow:**
+```
+Loop (when?)
+  └─> Pipeline (what stages? how to execute?)
+       └─> Stage Executor (parallel? single?)
+            └─> TaskRunner (low-level parallel tasks)
+                 └─> Simulation Steps (pure logic)
+```
+
+---
+
 ## Key Design Decisions
 
 ### 1. Two-Level Pipeline Architecture
@@ -33,12 +72,8 @@ A composable, pipeline-based simulation library for Elixir that separates simula
 - Handles Tasks, GenServers, orchestration
 - Manages parallelism across entities
 - Integrates with Gatekeeper for cross-entity writes
-- Different stage executors for different strategies (Grid, Single)
-
-**Reduction Layer**
-- Aggregates changes after simulation completes
-- Custom aggregators (sum, merge, chart data, etc.)
-- Runs at end of stage (not per-step, to avoid overhead)
+- Different stage executors for different strategies (Grid, Single, Gatekeeper)
+- Each executor handles its own reduction (tightly coupled to data structure and write mechanism)
 
 ---
 
@@ -62,12 +97,38 @@ A composable, pipeline-based simulation library for Elixir that separates simula
 
 ---
 
-### 4. Observability via PubSub
+### 4. Observability via Telemetry & PubSub
 
-**Decoupled Event System:**
-- Phoenix.PubSub for broadcasting events
-- Simulations don't know who's listening
-- Subscribers can join/leave at runtime
+**Two complementary systems for different observability needs:**
+
+#### Telemetry (Metrics & Performance)
+**Use for**: Metrics, performance monitoring, system health, integration with observability tools
+
+**Events emitted:**
+```elixir
+# Performance metrics
+[:ximula, :sim, :tick, :start]
+[:ximula, :sim, :tick, :stop]         # metadata: %{duration: microseconds, tick: N}
+
+[:ximula, :sim, :stage, :start]       # metadata: %{stage: :grow_crops}
+[:ximula, :sim, :stage, :stop]        # metadata: %{stage: :grow_crops, duration: ...}
+
+[:ximula, :sim, :step, :stop]         # metadata: %{step: :grow_plants, duration: ...}
+
+# Counts and gauges
+[:ximula, :sim, :entities, :count]    # measurements: %{count: 1000}
+[:ximula, :sim, :changes, :applied]   # measurements: %{count: 500}
+[:ximula, :sim, :tasks, :spawned]     # measurements: %{count: 100}
+
+# Errors
+[:ximula, :sim, :stage, :exception]   # metadata: %{stage: ..., reason: ...}
+[:ximula, :sim, :step, :exception]    # metadata: %{step: ..., reason: ...}
+```
+
+**Integration**: Works with LiveDashboard, StatsD, Prometheus, custom reporters
+
+#### PubSub (Domain Events & Real-time Updates)
+**Use for**: Real-time UI updates (LiveView), custom domain events, entity state changes
 
 **Topic Structure:**
 ```
@@ -77,20 +138,22 @@ sim:#{sim_name}:#{scope}:#{identifier}
 Examples:
 - `sim:world:tick:42`
 - `sim:world:stage:grow_crops`
-- `sim:world:step:grow_plants`
 - `sim:world:entity:field:10:5`
 - `sim:world:entity:field:*`
 
 **Event Types:**
-- `:tick_start`, `:tick_complete`
-- `:stage_start`, `:stage_complete`
-- `:step_complete`
-- Custom events from sim functions (for significant changes)
+- `:tick_start`, `:tick_complete` (with full state)
+- `:stage_start`, `:stage_complete` (with aggregated changes)
+- Domain events from sim functions (e.g., `:crop_harvested`, `:population_migrated`)
 
 **Selective Broadcasting:**
-- Sim functions decide when to broadcast (e.g., only significant changes)
+- Sim functions decide when to broadcast significant domain events
 - Prevents flooding with 50,000+ events per tick
 - Subscribers filter by topic granularity
+
+**When to use which:**
+- **Telemetry**: Always on, lightweight, for metrics and performance
+- **PubSub**: Opt-in, heavier payloads, for domain events and UI updates
 
 ---
 
@@ -117,7 +180,10 @@ Examples:
 config :ximula_sim,
   pubsub: MyApp.PubSub,
   simulation_name: :world,
-  broadcast_events: [:tick_start, :tick_complete, :stage_complete, :step_complete]
+  # PubSub events (opt-in, for domain events)
+  broadcast_events: [:tick_complete, :stage_complete],
+  # Telemetry always enabled for metrics
+  telemetry_prefix: [:my_app, :ximula, :sim]
 ```
 
 **Per Tick Pipeline:**
@@ -257,6 +323,7 @@ Ximula.Sim/
 │   └── Chart.ex                  # Chart data formatter
 │
 ├── PubSub.ex                      # PubSub helpers & topic builders
+├── Telemetry.ex                   # Telemetry event helpers
 ├── Gatekeeper.ex                  # Integration with Ximula.Gatekeeper
 ├── TickServer.ex                  # GenServer for tick coordination
 └── Changes.ex                     # Changeset utilities
@@ -279,7 +346,8 @@ Ximula.Sim/
 - Immutable data throughout
 - Changes tracked separately from original data
 - Integration with Ximula.Gatekeeper for coordination
-- Phoenix.PubSub for event broadcasting
+- Telemetry integration for metrics and performance monitoring
+- Phoenix.PubSub for domain events and real-time updates
 - Configurable at application and pipeline levels
 
 ### Performance Considerations
