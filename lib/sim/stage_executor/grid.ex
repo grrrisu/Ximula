@@ -13,7 +13,7 @@ defmodule Ximula.Sim.StageExecutor.Grid do
     )
     |> notify_stage_observesrs(opts)
     |> handle_sim_results()
-    |> reduce_grid(grid)
+    |> reduce_data(grid)
   end
 
   def execute_steps(position, steps: steps, grid: grid) do
@@ -45,9 +45,9 @@ defmodule Ximula.Sim.StageExecutor.Grid do
     end
   end
 
-  def reduce_grid({:error, reasons}, _grid), do: {:error, reasons}
+  def reduce_data({:error, reasons}, _grid), do: {:error, reasons}
 
-  def reduce_grid({:ok, results}, grid) do
+  def reduce_data({:ok, results}, grid) do
     results = Enum.map(results, fn %{position: position, field: field} -> {position, field} end)
     {:ok, Grid.apply_changes(grid, results)}
   end

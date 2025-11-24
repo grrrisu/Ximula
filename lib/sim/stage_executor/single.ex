@@ -10,6 +10,7 @@ defmodule Ximula.Sim.StageExecutor.Single do
     )
     |> notify_stage_observesrs(opts)
     |> handle_sim_results()
+    |> reduce_data()
   end
 
   def execute_steps(data, steps: steps) do
@@ -36,8 +37,14 @@ defmodule Ximula.Sim.StageExecutor.Single do
          |> List.first()}
 
       Enum.any?(ok) ->
-        {:ok, List.first(ok)}
+        {:ok, ok}
     end
+  end
+
+  def reduce_data({:error, reasons}, _grid), do: {:error, reasons}
+
+  def reduce_data({:ok, results}) do
+    {:ok, List.first(results)}
   end
 
   def notify_stage_observesrs(%{ok: ok, exit: failed} = results, opts) do
