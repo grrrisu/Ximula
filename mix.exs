@@ -28,6 +28,8 @@ defmodule Ximula.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:telemetry, "~> 1.0"},
+      {:phoenix_pubsub, "~> 2.2"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

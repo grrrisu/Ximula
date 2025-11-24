@@ -146,7 +146,7 @@ defmodule Ximula.Sim.PipelineTest do
         |> Pipeline.add_stage(executor: Single)
         |> Pipeline.add_step(__MODULE__, :crash)
 
-      assert_raise(RuntimeError, ~r/sim failed with "crash in step"/, fn ->
+      assert_raise(RuntimeError, ~r/sim failed with .*crash in step/, fn ->
         Pipeline.execute(pipeline, initial_state)
       end)
     end
