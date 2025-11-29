@@ -2,10 +2,10 @@ defmodule MySimulation do
   # Build pipeline
   def build do
     new_pipeline()
-    |> add_stage(executor: GridExecutor, reducer: SumReducer)
+    |> add_stage(adapter: GridAdapter, reducer: SumReducer)
     |> add_step(CropSimulation, :check_soil)
     |> add_step(CropSimulation, :grow_plants)
-    |> add_stage(executor: SingleExecutor, reducer: MergeReducer)
+    |> add_stage(adapter: SingleAdapter, reducer: MergeReducer)
     |> add_step(PopulationSimulation, :consume_food)
     |> add_step(PopulationSimulation, :grow_population)
   end
@@ -16,7 +16,7 @@ defmodule MySimulation do
   # Add stage (starts new transaction boundary)
   def add_stage(pipeline, opts) do
     stage = %{
-      executor: opts[:executor],
+      adapter: opts[:adapter],
       reducer: opts[:reducer],
       on_error: opts[:on_error] || :halt,
       steps: []
@@ -48,14 +48,14 @@ defmodule MySimulation do
   # Execute single stage (transaction boundary)
   defp execute_stage(stage, state) do
     pre_stage_state = state
-    
+
     try do
-      # Executor runs all steps, accumulates changes
-      changes = stage.executor.execute_steps(stage.steps, state)
-      
+      # Adapter runs all steps, accumulates changes
+      changes = stage.adapter.execute_steps(stage.steps, state)
+
       # Reducer aggregates changes
       final_changes = stage.reducer.reduce(changes)
-      
+
       # Apply changes atomically
       new_state = apply_changes(state, final_changes)
       {:ok, new_state}

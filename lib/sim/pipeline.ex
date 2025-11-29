@@ -3,7 +3,7 @@ defmodule Ximula.Sim.Pipeline do
   Defines and executes simulation pipelines with multiple stages and steps.
 
   A pipeline is a sequence of stages that run in order. Each stage defines:
-  - An executor strategy (Single, Grid, or Gatekeeper)
+  - An adapter strategy (Single, Grid, or Gatekeeper)
   - A list of simulation steps to run
   - Notification configuration for telemetry and events
 
@@ -11,18 +11,18 @@ defmodule Ximula.Sim.Pipeline do
 
   ```
   Pipeline (sequential stages)
-    └─> Stage (executor + steps)
-         └─> Executor (parallel/single)
+    └─> Stage (adapter + steps)
+         └─> Adapter (parallel/single)
               └─> Steps (pure functions)
 
   Example usage:
       import Ximula.Sim.Pipeline
       pipeline =
         new_pipeline(notify: metric, name: "Simple Test Pipeline")
-        |> add_stage(executor: GridExecutor, notify: %{entity: event_metric, all: metric}, name: "Vegetation Sim")
+        |> add_stage(adapter: GridAdapter, notify: %{entity: event_metric, all: metric}, name: "Vegetation Sim")
         |> add_step(CropSimulation, :check_soil, notify: {:metric, {3, 5}})
         |> add_step(CropSimulation, :grow_plants)
-        |> add_stage(executor: SingleExecutor, notify: :metric, name: "Population Sim")
+        |> add_stage(adapter: SingleAdapter, notify: :metric, name: "Population Sim")
         |> add_step(PopulationSimulation, :consume_food, notify: {:event_metric, {2, 3}})
 
       initial_state = %{data: root, meta: %{tick: 0}}
@@ -41,7 +41,7 @@ defmodule Ximula.Sim.Pipeline do
   def add_stage(pipeline, opts) do
     stage = %{
       name: opts[:name],
-      executor: opts[:executor],
+      adapter: opts[:adapter],
       on_error: opts[:on_error] || :raise,
       notify: Notify.build_stage_notification(opts[:notify]),
       steps: []
@@ -89,8 +89,8 @@ defmodule Ximula.Sim.Pipeline do
     end)
   end
 
-  defp run_stage(%{executor: executor} = stage, %{data: _input_data, opts: opts} = input) do
-    data = executor.get_data(input)
+  defp run_stage(%{adapter: adapter} = stage, %{data: _input_data, opts: opts} = input) do
+    data = adapter.get_data(input)
 
     TaskRunner.sim(
       data,
@@ -99,7 +99,7 @@ defmodule Ximula.Sim.Pipeline do
       opts
     )
     |> handle_sim_results()
-    |> executor.reduce_data(input)
+    |> adapter.reduce_data(input)
   end
 
   def execute_steps(data, stage: stage) do

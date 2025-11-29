@@ -1,4 +1,4 @@
-defmodule Ximula.Sim.StageExecutor.Gatekeeper do
+defmodule Ximula.Sim.StageAdapter.Gatekeeper do
   alias Ximula.Gatekeeper.Agent, as: Gatekeeper
 
   @moduledoc """
@@ -8,7 +8,7 @@ defmodule Ximula.Sim.StageExecutor.Gatekeeper do
   updated atomically. Integrates with `Ximula.Gatekeeper` for safe
   concurrent access.
 
-  ## Executor Protocol
+  ## Adapter Protocol
 
   Implements two functions:
 

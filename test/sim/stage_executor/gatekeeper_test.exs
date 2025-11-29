@@ -1,4 +1,4 @@
-defmodule Ximula.Sim.StageExecutor.GatekeeperTest do
+defmodule Ximula.Sim.StageAdapter.GatekeeperTest do
   use ExUnit.Case, async: true
 
   alias Ximula.Grid
@@ -7,7 +7,7 @@ defmodule Ximula.Sim.StageExecutor.GatekeeperTest do
   alias Ximula.Gatekeeper.Agent, as: Gatekeeper
 
   alias Ximula.Sim.{Change, Pipeline}
-  alias Ximula.Sim.StageExecutor.Gatekeeper, as: GatekeeperExecutor
+  alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter
 
   def get_field(grid, position) do
     %{position: position, field: Grid.get(grid, position)}
@@ -29,7 +29,7 @@ defmodule Ximula.Sim.StageExecutor.GatekeeperTest do
     {:ok, gatekeeper} = start_supervised({GatekeeperServer, [context: %{agent: agent}]})
 
     {:ok, supervisor} =
-      start_supervised({Task.Supervisor, name: StageExecutor.GatekeeperTest.Supervisor})
+      start_supervised({Task.Supervisor, name: StageAdapter.GatekeeperTest.Supervisor})
 
     %{supervisor: supervisor, gatekeeper: gatekeeper}
   end
@@ -48,7 +48,7 @@ defmodule Ximula.Sim.StageExecutor.GatekeeperTest do
 
     pipeline =
       Pipeline.new_pipeline()
-      |> Pipeline.add_stage(executor: GatekeeperExecutor)
+      |> Pipeline.add_stage(adapter: GatekeeperAdapter)
       |> Pipeline.add_step(__MODULE__, :inc_counter)
       |> Pipeline.add_step(__MODULE__, :inc_counter)
 
