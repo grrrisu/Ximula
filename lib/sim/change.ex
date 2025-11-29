@@ -54,7 +54,7 @@ defmodule Ximula.Sim.Change do
   1. Read from `Change.get/2` (sees accumulated changes)
   2. Accumulate changes via `change_by/3` or `set/3`
   3. Return the modified `%Change{}` struct
-  4. Let executors call `reduce/1` at the end
+  4. Let adapters call `reduce/1` at the end
 
   Example:
 

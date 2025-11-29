@@ -1,11 +1,11 @@
-defmodule Ximula.Sim.StageExecutor.Grid do
+defmodule Ximula.Sim.StageAdapter.Grid do
   @moduledoc """
   Executes a stage across all positions in a grid, in parallel.
 
   Used for spatial simulations where entities are organized in a 2D grid
   and each cell can be processed independently.
 
-  ## Executor Protocol
+  ## Adapter Protocol
 
   Implements two functions:
 
@@ -29,7 +29,7 @@ defmodule Ximula.Sim.StageExecutor.Grid do
 
   - Entities need to interact (migration, combat) → use `Gatekeeper`
   - Single entity → use `Single`
-  - Non-spatial entities → use custom executor or `Single`
+  - Non-spatial entities → use custom adapter or `Single`
   """
 
   alias Ximula.Grid

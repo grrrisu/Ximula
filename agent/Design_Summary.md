@@ -17,10 +17,10 @@ A composable, pipeline-based simulation library for Elixir that separates simula
 
 ### Pipeline / Stage (Coordination & Execution Strategy)
 * **Purpose**: Defines what runs and how (sequential stages)
-* **Properties**: stage sequence, stage executor, reducer
+* **Properties**: stage sequence, stage adapter, reducer
 * **Execution**: 
   - Calls `TaskRunner` for parallel execution
-  - Handles Gatekeeper locking (via `StageExecutor.Grid`)
+  - Handles Gatekeeper locking (via `StageAdapter.Grid`)
   - Aggregates and applies changes
 * **API**: `Pipeline.execute(pipeline, state)`
 * **Example**: Stage 1: grow_crops → Stage 2: consume_food
@@ -37,7 +37,7 @@ A composable, pipeline-based simulation library for Elixir that separates simula
 ```
 Loop (when?)
   └─> Pipeline (what stages? how to execute?)
-       └─> Stage Executor (parallel? single?)
+       └─> Stage Adapter (parallel? single?)
             └─> TaskRunner (low-level parallel tasks)
                  └─> Simulation Steps (pure logic)
 ```
@@ -72,8 +72,8 @@ Loop (when?)
 - Handles Tasks, GenServers, orchestration
 - Manages parallelism across entities
 - Integrates with Gatekeeper for cross-entity writes
-- Different stage executors for different strategies (Grid, Single, Gatekeeper)
-- Each executor handles its own reduction (tightly coupled to data structure and write mechanism)
+- Different stage adapters for different strategies (Grid, Single, Gatekeeper)
+- Each adapter handles its own reduction (tightly coupled to data structure and write mechanism)
 
 ---
 
@@ -188,7 +188,7 @@ config :ximula_sim,
 
 **Per Tick Pipeline:**
 - Stage definitions
-- Stage executor selection
+- Stage adapter selection
 - Simulation module
 - Reducer selection
 
@@ -203,7 +203,7 @@ config :ximula_sim,
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     TICK PIPELINE                            │
-│  Defines: stage sequence, executor, simulation, reducer     │
+│  Defines: stage sequence, adapter, simulation, reducer     │
 │  Config: PubSub topics, broadcast settings                  │
 └────────────────────────┬────────────────────────────────────┘
                          │
@@ -212,8 +212,8 @@ config :ximula_sim,
         ┌────────────────▼────────────────┐
         │      EXECUTION LAYER             │
         │  - TaskRunner (parallel tasks)  │
-        │  - StageExecutor.Grid           │
-        │  - StageExecutor.Single         │
+        │  - StageAdapter.Grid           │
+        │  - StageAdapter.Single         │
         │  - Gatekeeper coordination      │
         │  - Broadcasts: stage_start      │
         └────────────────┬────────────────┘
@@ -270,7 +270,7 @@ config :ximula_sim,
 
 2. **Stage 1: grow_crops**
    - Broadcast `:stage_start`
-   - `StageExecutor.Grid` spawns tasks for all fields (parallel via `TaskRunner`)
+   - `StageAdapter.Grid` spawns tasks for all fields (parallel via `TaskRunner`)
    - Each field runs CropSimulation pipeline:
      - `check_soil(data, %{}, opts)` → `%{changes: %{soil: -1}}`
      - `apply_water(data, %{soil: -1}, opts)` → `%{changes: %{water: +10}}`
@@ -283,13 +283,13 @@ config :ximula_sim,
 
 3. **Stage 2: grow_population**
    - Now has updated food available from Stage 1
-   - `StageExecutor.Grid` spawns tasks (parallel)
+   - `StageAdapter.Grid` spawns tasks (parallel)
    - PopulationSimulation pipeline runs
    - Aggregate and apply changes
 
 4. **Stage 3: population_movement**
    - Requires cross-entity coordination
-   - `StageExecutor.Grid` collects all `locks_needed`
+   - `StageAdapter.Grid` collects all `locks_needed`
    - Uses Gatekeeper to lock affected entities
    - Runs `cross_entity_fn` for migrations
    - Gatekeeper.update_multi to apply changes
@@ -311,8 +311,8 @@ Ximula.Sim/
 │
 ├── TaskRunner.ex                  # Low-level parallel task execution
 │
-├── StageExecutor/
-│   ├── Behaviour.ex              # StageExecutor behaviour definition
+├── StageAdapter/
+│   ├── Behaviour.ex              # StageAdapter behaviour definition
 │   ├── Single.ex                 # Single entity execution
 │   └── Grid.ex                   # Parallel execution across entities + Gatekeeper
 │

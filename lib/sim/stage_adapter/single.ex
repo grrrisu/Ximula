@@ -1,4 +1,4 @@
-defmodule Ximula.Sim.StageExecutor.Single do
+defmodule Ximula.Sim.StageAdapter.Single do
   @moduledoc """
   Executes a stage on a single entity.
 
@@ -6,7 +6,7 @@ defmodule Ximula.Sim.StageExecutor.Single do
   a collection. For example: world-level calculations, single settlement
   updates, or non-spatial simulations.
 
-  ## Executor Protocol
+  ## Adapter Protocol
 
   Implements two functions:
 

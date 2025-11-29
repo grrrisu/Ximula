@@ -52,10 +52,10 @@ defmodule Ximula.Sim.PipelineTest do
   end
 
   # ============================================================================
-  # Test Fixtures - Simple Executor
+  # Test Fixtures - Simple Adapter
   # ============================================================================
 
-  defmodule SimpleExecutor do
+  defmodule SimpleAdapter do
     def execute_steps(steps, state) do
       # For testing: just run steps on single entity
       accumulated_changes = %{}
@@ -88,7 +88,7 @@ defmodule Ximula.Sim.PipelineTest do
 
   defp add_stage(pipeline, opts) do
     stage = %{
-      executor: opts[:executor],
+      adapter: opts[:adapter],
       reducer: opts[:reducer] || SimpleReducer,
       on_error: opts[:on_error] || :halt,
       steps: []
@@ -106,7 +106,7 @@ defmodule Ximula.Sim.PipelineTest do
   end
 
   # ============================================================================
-  # Helper: Pipeline Executor
+  # Helper: Pipeline Adapter
   # ============================================================================
 
   defp execute(pipeline, initial_state) do
@@ -123,7 +123,7 @@ defmodule Ximula.Sim.PipelineTest do
     pre_stage_state = state
 
     try do
-      changes_list = stage.executor.execute_steps(stage.steps, state)
+      changes_list = stage.adapter.execute_steps(stage.steps, state)
       final_changes = stage.reducer.reduce(changes_list)
       new_state = apply_changes(state, final_changes)
       {:ok, new_state}
@@ -153,18 +153,18 @@ defmodule Ximula.Sim.PipelineTest do
     test "adds single stage" do
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
 
       assert length(pipeline.stages) == 1
-      assert hd(pipeline.stages).executor == SimpleExecutor
+      assert hd(pipeline.stages).adapter == SimpleAdapter
       assert hd(pipeline.stages).steps == []
     end
 
     test "adds multiple stages" do
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
+        |> add_stage(adapter: SimpleAdapter)
 
       assert length(pipeline.stages) == 2
     end
@@ -172,7 +172,7 @@ defmodule Ximula.Sim.PipelineTest do
     test "adds steps to current stage" do
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
         |> add_step(CropSimulator, :grow_plants)
 
@@ -185,9 +185,9 @@ defmodule Ximula.Sim.PipelineTest do
     test "steps added to correct stage" do
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(PopulationSimulator, :consume_food)
 
       assert length(Enum.at(pipeline.stages, 0).steps) == 1
@@ -198,13 +198,13 @@ defmodule Ximula.Sim.PipelineTest do
       pipeline =
         new_pipeline()
         |> add_stage(
-          executor: SimpleExecutor,
+          adapter: SimpleAdapter,
           reducer: SimpleReducer,
           on_error: :continue
         )
 
       stage = hd(pipeline.stages)
-      assert stage.executor == SimpleExecutor
+      assert stage.adapter == SimpleAdapter
       assert stage.reducer == SimpleReducer
       assert stage.on_error == :continue
     end
@@ -220,7 +220,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
 
       {:ok, final_state} = execute(pipeline, initial_state)
@@ -233,7 +233,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
         |> add_step(CropSimulator, :apply_water)
         |> add_step(CropSimulator, :grow_plants)
@@ -251,7 +251,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :apply_water)  # +50 water = 70
         |> add_step(CropSimulator, :grow_plants)  # 70/10 = 7 growth
 
@@ -271,10 +271,10 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :apply_water)
         |> add_step(CropSimulator, :grow_plants)
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(PopulationSimulator, :consume_food)
         |> add_step(PopulationSimulator, :grow_population)
 
@@ -297,10 +297,10 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :apply_water)
         |> add_step(CropSimulator, :grow_plants)
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(PopulationSimulator, :consume_food)
         |> add_step(PopulationSimulator, :grow_population)
 
@@ -323,7 +323,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
         |> add_step(CropSimulator, :apply_water)
         |> add_step(FailingSimulator, :crash_step)
@@ -340,10 +340,10 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
         |> add_step(CropSimulator, :apply_water)
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(PopulationSimulator, :consume_food)
         |> add_step(FailingSimulator, :crash_step)
 
@@ -362,9 +362,9 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor, on_error: :halt)
+        |> add_stage(adapter: SimpleAdapter, on_error: :halt)
         |> add_step(FailingSimulator, :crash_step)
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
 
       {:error, :halted, final_state} = execute(pipeline, initial_state)
@@ -378,9 +378,9 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor, on_error: :continue)
+        |> add_stage(adapter: SimpleAdapter, on_error: :continue)
         |> add_step(FailingSimulator, :crash_step)
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :check_soil)
 
       {:ok, final_state} = execute(pipeline, initial_state)
@@ -409,7 +409,7 @@ defmodule Ximula.Sim.PipelineTest do
 
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
 
       {:ok, final_state} = execute(pipeline, initial_state)
 
@@ -419,7 +419,7 @@ defmodule Ximula.Sim.PipelineTest do
     test "handles empty initial state" do
       pipeline =
         new_pipeline()
-        |> add_stage(executor: SimpleExecutor)
+        |> add_stage(adapter: SimpleAdapter)
         |> add_step(CropSimulator, :apply_water)
 
       {:ok, final_state} = execute(pipeline, %{})

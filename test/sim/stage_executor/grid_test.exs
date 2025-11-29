@@ -1,8 +1,8 @@
-defmodule Ximula.Sim.StageExecutor.GridTest do
+defmodule Ximula.Sim.StageAdapter.GridTest do
   use ExUnit.Case, async: true
 
   alias Ximula.Sim.{Change, Pipeline}
-  alias Ximula.Sim.StageExecutor.Grid, as: GridExecutor
+  alias Ximula.Sim.StageAdapter.Grid, as: GridAdapter
   alias Ximula.Grid
 
   def inc_counter(%Change{} = change) do
@@ -12,7 +12,7 @@ defmodule Ximula.Sim.StageExecutor.GridTest do
   end
 
   setup do
-    supervisor = start_supervised!({Task.Supervisor, name: StageExecutor.GridTest.Supervisor})
+    supervisor = start_supervised!({Task.Supervisor, name: StageAdapter.GridTest.Supervisor})
     %{supervisor: supervisor}
   end
 
@@ -24,7 +24,7 @@ defmodule Ximula.Sim.StageExecutor.GridTest do
 
     pipeline =
       Pipeline.new_pipeline()
-      |> Pipeline.add_stage(executor: GridExecutor)
+      |> Pipeline.add_stage(adapter: GridAdapter)
       |> Pipeline.add_step(__MODULE__, :inc_counter)
 
     {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
