@@ -53,7 +53,10 @@ defmodule Ximula.Sim.Notify do
     :telemetry.span(
       @telemetry_prefix ++ [:pipeline],
       %{name: Map.get(pipeline, :name)},
-      {fn -> fun.() end, %{}}
+      fn ->
+        result = fun.()
+        {result, %{}}
+      end
     )
   end
 
@@ -80,7 +83,10 @@ defmodule Ximula.Sim.Notify do
     :telemetry.span(
       @telemetry_prefix ++ [:pipeline, :stage],
       %{stage_name: stage.name},
-      {fn -> fun.() end, %{}}
+      fn ->
+        result = fun.()
+        {result, %{}}
+      end
     )
   end
 
@@ -139,7 +145,10 @@ defmodule Ximula.Sim.Notify do
     :telemetry.span(
       @telemetry_prefix ++ [:stage, :step],
       meta,
-      {fn -> fun.() end, meta}
+      fn ->
+        result = fun.()
+        {result, meta}
+      end
     )
   end
 
