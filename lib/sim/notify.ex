@@ -6,71 +6,135 @@ defmodule Ximula.Sim.Notify do
   PubSub: Opt-in, domain events with full payloads
   """
 
+  require Logger
+
   @telemetry_prefix [:ximula, :sim]
 
-  def build_steps_notification(nil), do: :steps_none
+  # --- Build Notification ---
 
-  def build_steps_notification(notify)
-      when notify in [:none, :telemetry, :pubsub, :telemetry_pubsub],
-      do: "steps_#{notify}" |> String.to_atom()
+  def build_pipeline_notification(notify), do: build_notification(notify)
 
-  def build_step_notification(nil), do: :step_none
-
-  def build_step_notification(notify)
-      when notify in [:none, :telemetry, :pubsub, :telemetry_pubsub],
-      do: "step_#{notify}" |> String.to_atom()
-
-  def measure_stage(fun, opts) do
-    :telemetry.span(@telemetry_prefix ++ [:stage], %{stage_name: opts[:stage_name]}, fn ->
-      {fun.(), %{stage_name: opts[:stage_name]}}
-    end)
-    |> broadcast(:stage_complete, opts)
+  def build_stage_notification(%{} = notify) do
+    %{
+      all: Map.get(notify, :all) |> build_notification(),
+      entity: Map.get(notify, :entity) |> build_notification()
+    }
   end
 
-  def measure_steps(notify, fun) do
-    apply(__MODULE__, notify, [fun])
+  def build_stage_notification(notify) do
+    %{all: build_notification(notify), entity: :none}
   end
 
-  def failed_steps(failed) do
-    :telemetry.execute(
-      @telemetry_prefix ++ [:stage, :failed_steps],
-      %{failed_count: length(failed)},
-      %{}
-    )
+  def build_step_notification({_notify, nil}) do
+    raise "step notifications needs an entity"
   end
 
-  def measure_step(step, fun) do
-    apply(__MODULE__, step.notify, [step, fun])
+  def build_step_notification({notify, entity}) do
+    {build_notification(notify), entity}
   end
 
-  # --- Steps Notification Strategies ---
+  def build_step_notification(nil), do: {:none, nil}
 
-  def steps_none(fun), do: fun.()
+  defp build_notification(nil), do: :none
 
-  def steps_telemetry(fun) do
+  defp build_notification(notify)
+       when notify in [:none, :metric, :event, :event_metric],
+       do: notify
+
+  # TODO
+
+  # rename / reorg -> measure_pipeline - measure_stage - measure_step
+
+  # --- Pipeline Notification ---
+
+  def measure_pipeline(%{notify: :none}, fun), do: fun.()
+
+  def measure_pipeline(%{notify: :metric} = pipeline, fun) do
     :telemetry.span(
-      @telemetry_prefix ++ [:stage, :all_steps],
-      %{},
+      @telemetry_prefix ++ [:pipeline],
+      %{name: Map.get(pipeline, :name)},
       {fn -> fun.() end, %{}}
     )
   end
 
-  def steps_pubsub(fun) do
+  def measure_pipeline(%{notify: :event} = pipeline, fun) do
     fun.()
-    |> broadcast(:steps_complete, %{})
+    |> broadcast(:pipeline_completed, pipeline)
   end
 
-  def steps_telemetry_pubsub(fun) do
-    steps_telemetry(fun)
-    |> broadcast(:steps_complete, %{})
+  def measure_pipeline(%{notify: :event_metric} = pipeline, fun) do
+    measure_pipeline(%{pipeline | notify: :metric}, fun)
+    |> broadcast(:pipeline_completed, pipeline)
+  end
+
+  def measure_pipeline(%{notify: unknown}, fun) do
+    Logger.warning("unknown pipeline notification type #{inspect(unknown)}")
+    fun.()
+  end
+
+  # --- Stage Notification ---
+
+  def measure_stage(%{notify: %{all: :none}}, fun), do: fun.()
+
+  def measure_stage(%{notify: %{all: :metric}} = stage, fun) do
+    :telemetry.span(
+      @telemetry_prefix ++ [:pipeline, :stage],
+      %{stage_name: stage.name},
+      {fn -> fun.() end, %{}}
+    )
+  end
+
+  def measure_stage(%{notify: %{all: :event}} = stage, fun) do
+    fun.()
+    |> broadcast(:stage_completed, stage)
+  end
+
+  def measure_stage(%{notify: %{all: :event_metric}} = stage, fun) do
+    measure_pipeline(put_in(stage, [:notify, :all], :metric), fun)
+    |> broadcast(:stage_completed, stage)
+  end
+
+  def measure_stage(%{notify: %{all: unknown}}, fun) do
+    Logger.warning("unknown stage notification type #{inspect(unknown)}")
+    fun.()
+  end
+
+  # --- Entity Stage Notification ---
+
+  def measure_entity_stage(%{notify: %{entity: :none}}, fun), do: fun.()
+
+  def measure_entity_stage(%{notify: %{entity: :metric}} = stage, fun) do
+    :telemetry.span(
+      @telemetry_prefix ++ [:pipeline, :stage, :entity],
+      %{stage_name: stage.name},
+      fn ->
+        %{ok: ok, failed: failed} = fun.()
+        {%{ok: ok, failed: failed}, %{ok: Enum.count(ok), failed: Enum.count(failed)}}
+      end
+    )
+  end
+
+  def measure_entity_stage(%{notify: %{entity: :event}} = stage, fun) do
+    fun.()
+    |> broadcast(:entity_stage_completed, stage)
+  end
+
+  def measure_entity_stage(%{notify: %{entity: :event_metric}} = stage, fun) do
+    measure_pipeline(put_in(stage, [:notify, :entity], :metric), fun)
+    |> broadcast(:entity_stage_completed, stage)
+  end
+
+  def measure_entity_stage(%{notify: %{entity: unknown}}, fun) do
+    Logger.warning("unknown entity stage notification type #{inspect(unknown)}")
+    fun.()
   end
 
   # --- Step Notification Strategies ---
 
-  def step_none(_step, fun), do: fun.()
+  def measure_step(%{notify: :none}, fun), do: fun.()
 
-  def step_telemetry(step, fun) do
-    meta = %{name: step.name, module: step.module, function: step.function}
+  def measure_step(%{notify: {:metric, entity}} = step, fun) do
+    meta = %{entity: entity, module: step.module, function: step.function}
 
     :telemetry.span(
       @telemetry_prefix ++ [:stage, :step],
@@ -79,37 +143,55 @@ defmodule Ximula.Sim.Notify do
     )
   end
 
-  def step_pubsub(step, fun) do
+  def measure_step(%{notify: {:event, _entity}} = step, fun) do
     fun.()
-    |> broadcast(:step_complete, step)
+    |> broadcast(:step_completed, step)
   end
 
-  def step_telemetry_pubsub(step, fun) do
-    step_telemetry(step, fun)
-    |> broadcast(:step_complete, step)
+  def measure_step(%{notify: {:event_metric, entity}} = step, fun) do
+    measure_step(%{step | notify: {:metric, entity}}, fun)
+    |> broadcast(:step_completed, step)
+  end
+
+  def measure_step(%{notify: {unknown, entity}}, fun) do
+    Logger.warning("unknown notification type #{inspect(unknown)} for entity #{inspect(entity)}")
+    fun.()
   end
 
   # --- PubSub ---
 
-  defp broadcast(_result, event, opts) do
-    payload = prepare_payload(event, opts)
+  defp broadcast(result, event, opts) do
+    payload = prepare_payload(result, event, opts)
     topic = build_topic(event, payload, opts)
     :ok = Phoenix.PubSub.broadcast(:TODO_PUB_SUB_NAME, topic, {event, payload})
+    result
   end
 
-  defp prepare_payload(:stage_complete, opts), do: %{stage_naem: opts[:stage_name]}
-  defp prepare_payload(:steps_complete, _), do: %{}
-  defp prepare_payload(:step_complete, step), do: %{module: step.module, function: step.function}
+  defp prepare_payload(result, :pipeline_completed, pipeline),
+    do: %{pipeline_name: pipeline.name, result: result}
 
-  defp build_topic(:stage_complete, _payload, opts) do
-    "sim:#{opts[:sim_name] || :sim}:stage:#{opts[:stage_name]}"
+  defp prepare_payload(result, :stage_completed, stage),
+    do: %{stage_name: stage.name, result: result}
+
+  defp prepare_payload(result, :entity_stage_completed, stage),
+    do: %{stage_name: stage.name, result: result}
+
+  defp prepare_payload(result, :step_completed, step),
+    do: %{step_module: step.module, step_function: step.function, result: result}
+
+  defp build_topic(:pipeline_completed, _payload, pipeline) do
+    "sim:pipeline:#{pipeline.name}"
   end
 
-  defp build_topic(:steps_complete, %{step: step}, opts) do
-    "sim:#{opts[:sim_name] || :sim}:step:#{step}"
+  defp build_topic(:stage_completed, _payload, stage) do
+    "sim:pipeline:stage:#{stage.name}"
   end
 
-  defp build_topic(:step_complete, %{step: step}, opts) do
-    "sim:#{opts[:sim_name] || :sim}:step:#{step}"
+  defp build_topic(:entity_stage_completed, _payload, stage) do
+    "sim:pipeline:stage:#{stage.name}:entity"
+  end
+
+  defp build_topic(:step_completed, _payload, _step) do
+    "sim:pipeline:stage:entity:step"
   end
 end

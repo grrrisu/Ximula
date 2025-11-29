@@ -33,7 +33,4 @@ defmodule Ximula.Sim.StageExecutor.GridTest do
     assert Grid.get(final_state, 0, 2) == 4
     assert Grid.get(final_state, 1, 4) == 10
   end
-
-  test "executes grid stage with single step via Gatekeeper", %{supervisor: supervisor} do
-  end
 end
