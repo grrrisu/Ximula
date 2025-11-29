@@ -59,13 +59,11 @@ defmodule Ximula.Sim.PipelineTest do
         Pipeline.new_pipeline()
         |> Pipeline.add_stage(
           executor: Single,
-          reducer: SimpleReducer,
           on_error: :continue
         )
 
       stage = hd(pipeline.stages)
       assert stage.executor == Single
-      assert stage.reducer == SimpleReducer
       assert stage.on_error == :continue
     end
   end
@@ -84,7 +82,7 @@ defmodule Ximula.Sim.PipelineTest do
     Change.set(change, :counter, counter * multiplier)
   end
 
-  def crash(%Change{} = change) do
+  def crash(%Change{}) do
     raise "crash in step"
   end
 
