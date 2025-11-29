@@ -1,6 +1,19 @@
 defmodule Ximula.Sim.Pipeline do
   @moduledoc """
-  Defines a simulation pipeline with multiple stages and steps.
+  Defines and executes simulation pipelines with multiple stages and steps.
+
+  A pipeline is a sequence of stages that run in order. Each stage defines:
+  - An executor strategy (Single, Grid, or Gatekeeper)
+  - A list of simulation steps to run
+  - Notification configuration for telemetry and events
+
+  ## Architecture
+
+  ```
+  Pipeline (sequential stages)
+    └─> Stage (executor + steps)
+         └─> Executor (parallel/single)
+              └─> Steps (pure functions)
 
   Example usage:
       import Ximula.Sim.Pipeline
@@ -94,13 +107,15 @@ defmodule Ximula.Sim.Pipeline do
       Enum.reduce(
         stage.steps,
         %Change{data: data},
-        fn %{module: module, function: function} = step, change ->
-          Notify.measure_step(step, fn ->
-            apply(module, function, [change])
-          end)
-        end
+        &execute_step/2
       )
       |> Change.reduce()
+    end)
+  end
+
+  def execute_step(%{module: module, function: function} = step, change) do
+    Notify.measure_step(step, fn ->
+      apply(module, function, [change])
     end)
   end
 
