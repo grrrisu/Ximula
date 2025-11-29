@@ -1,9 +1,18 @@
 defmodule Ximula.Sim.Notify do
   @moduledoc """
-  Unified notification helper for Telemetry and PubSub.
+  Unified notification system for Telemetry and PubSub events.
 
-  Telemetry: Always on, lightweight metrics (duration, counts)
-  PubSub: Opt-in, domain events with full payloads
+  Provides configurable notifications at three levels:
+  - Pipeline (entire simulation run)
+  - Stage (one stage across all entities)
+  - Step (one step for one entity)
+
+  ## Notification Types
+
+  - `:none` - No notifications
+  - `:metric` - Telemetry only (duration, counts)
+  - `:event` - PubSub only (domain events with payloads)
+  - `:event_metric` - Both telemetry and PubSub
   """
 
   require Logger
