@@ -17,6 +17,8 @@ defmodule Ximula.Sim.Notify do
 
   require Logger
 
+  alias Ximula.Sim.Queue
+
   @telemetry_prefix [:ximula, :sim]
 
   # --- Build Notification ---
@@ -50,9 +52,20 @@ defmodule Ximula.Sim.Notify do
        when notify in [:none, :metric, :event, :event_metric],
        do: notify
 
-  # TODO
+  # --- Queue Notification ---
 
-  # rename / reorg -> measure_pipeline - measure_stage - measure_step
+  def measure_queue(%Queue{name: name, interval: interval}, fun) do
+    meta = %{name: name, interval: interval}
+
+    :telemetry.span(
+      @telemetry_prefix ++ [:queue],
+      meta,
+      fn ->
+        result = fun.()
+        {result, meta}
+      end
+    )
+  end
 
   # --- Pipeline Notification ---
 

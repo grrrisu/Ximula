@@ -16,7 +16,7 @@ defmodule Ximula.Sim.Loop do
   """
   use GenServer
 
-  alias Ximula.Sim.{Queue, TaskRunner}
+  alias Ximula.Sim.{Notify, Queue}
 
   require Logger
 
@@ -56,7 +56,20 @@ defmodule Ximula.Sim.Loop do
        queues: [],
        supervisor: opts[:supervisor] || Ximula.Sim.Loop.Task.Supervisor,
        sim_args: opts[:sim_args] || []
-     }}
+     }, {:continue, opts[:name]}}
+  end
+
+  def handle_continue(name, state) do
+    :telemetry.attach_many(
+      name || "ximula-sim-loop-#{System.unique_integer([:positive])}",
+      [
+        [:ximula, :sim, :queue, :stop]
+      ],
+      &__MODULE__.handle_telemetry/4,
+      %{}
+    )
+
+    {:noreply, state}
   end
 
   def handle_call(:get_queues, _from, state) do
@@ -105,19 +118,33 @@ defmodule Ximula.Sim.Loop do
     {:noreply, state}
   end
 
-  def handle_info({ref, response}, state) do
+  def handle_info({ref, _response}, state) do
     Process.demonitor(ref, [:flush])
-    check_time(response)
     {:noreply, %{state | queues: reset_queue_task!(state.queues, ref)}}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
-    check_time(ref, reason, state)
+    log_error(ref, reason, state)
     {:noreply, %{state | queues: reset_queue_task!(state.queues, ref)}}
   end
 
   def handle_info(_msg, state) do
     {:noreply, state}
+  end
+
+  def handle_telemetry(
+        _event,
+        %{duration: duration},
+        %{name: name, interval: interval},
+        _config
+      ) do
+    duration = System.convert_time_unit(duration, :native, :microsecond)
+
+    if duration > interval * 1_000 do
+      Logger.warning(
+        "queue #{name} took #{duration} μs, but has an interval of #{interval * 1_000} μs"
+      )
+    end
   end
 
   # adding a queue to running system can lead to errors,
@@ -152,17 +179,7 @@ defmodule Ximula.Sim.Loop do
     Map.put(queue, :timer, schedule_next_tick(queue))
   end
 
-  def check_time({time, {_results, queue}}) do
-    if time < queue.interval * 1000 do
-      Logger.info("queue #{queue.name} took #{time} μs")
-    else
-      Logger.warning(
-        "queue #{queue.name} took #{time} μs, but has an interval of #{queue.interval * 1000} μs"
-      )
-    end
-  end
-
-  def check_time(ref, reason, state) do
+  def log_error(ref, reason, state) do
     queue = Enum.find(state.queues, fn queue -> get_task_ref(queue) == ref end)
 
     if queue do
@@ -177,23 +194,10 @@ defmodule Ximula.Sim.Loop do
 
   defp execute(queue, supervisor, sim_args) do
     Task.Supervisor.async_nolink(supervisor, fn ->
-      TaskRunner.benchmark(fn ->
-        {execute_sim_function(queue, sim_args), queue}
+      Notify.measure_queue(queue, fn ->
+        Queue.execute(queue, sim_args)
       end)
     end)
-  end
-
-  defp execute_sim_function(%Queue{func: func} = queue, []) when is_function(func) do
-    queue.func.(queue)
-  end
-
-  defp execute_sim_function(%Queue{func: func} = queue, global_args) when is_function(func) do
-    queue.func.(queue, global_args)
-  end
-
-  defp execute_sim_function(%Queue{func: {module, sim_func, queue_args}} = queue, global_args) do
-    args = Keyword.merge(global_args, queue_args)
-    apply(module, sim_func, [queue, args])
   end
 
   defp schedule_next_tick(queue) do

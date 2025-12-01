@@ -10,7 +10,7 @@ defmodule Ximula.Sim.LoopTest do
   def callback(_queue, dest: test_case), do: send(test_case, :success)
 
   def too_long(_queue, dest: test_case) do
-    Process.sleep(10)
+    Process.sleep(100)
     send(test_case, :success)
   end
 
@@ -56,25 +56,25 @@ defmodule Ximula.Sim.LoopTest do
   describe "start and stop" do
     setup do
       start_supervised!({Task.Supervisor, name: LoopTest.TaskRunner.Supervisor})
-      loop_tasks = start_supervised!({Task.Supervisor, name: Sim.Loop.Task.Supervisor})
+      loop_tasks = start_supervised!(Task.Supervisor)
       loop = start_supervised!({Loop, [supervisor: loop_tasks]})
       %{loop_tasks: loop_tasks, loop: loop}
     end
 
-    @tag ci: :skip
+    # @tag ci: :skip
     test "runs queue", %{loop: loop} do
-      queue = %Queue{name: "test", func: {LoopTest, :callback, [dest: self()]}, interval: 5}
+      queue = %Queue{name: "test", func: {LoopTest, :callback, [dest: self()]}, interval: 50}
       :ok = Loop.clear(loop)
       :ok = Loop.add_queue(loop, queue)
       :ok = Loop.start_sim(loop)
-      Process.sleep(50)
+      Process.sleep(200)
       :ok = Loop.stop_sim(loop)
       assert_received(:success)
     end
 
-    @tag ci: :skip
+    # @tag ci: :skip
     test "handles timeout", %{loop: loop} do
-      queue = %Queue{name: "test", func: {LoopTest, :too_long, [dest: self()]}, interval: 5}
+      queue = %Queue{name: "test", func: {LoopTest, :too_long, [dest: self()]}, interval: 50}
       :ok = Loop.clear(loop)
       :ok = Loop.add_queue(loop, queue)
       :ok = Loop.start_sim(loop)

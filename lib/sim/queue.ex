@@ -8,9 +8,28 @@ defmodule Ximula.Sim.Queue do
 
   Depending if the Sim.Loop injects addidional args, the function needs 2 args `&Simulation.sim/2`
   """
+  alias Ximula.Sim.{Pipeline, Queue}
+
   defstruct name: nil,
             func: nil,
             interval: 1_000,
             timer: nil,
             task: nil
+
+  def add_pipeline(%Queue{} = queue, %{} = pipeline, data) do
+    %{queue | func: {Pipeline, :execute, [pipeline, data]}}
+  end
+
+  def execute(%Queue{func: func} = queue, []) when is_function(func) do
+    queue.func.(queue)
+  end
+
+  def execute(%Queue{func: func} = queue, global_args) when is_function(func) do
+    queue.func.(queue, global_args)
+  end
+
+  def execute(%Queue{func: {module, sim_func, queue_args}} = queue, global_args) do
+    args = Keyword.merge(global_args, queue_args)
+    apply(module, sim_func, [queue, args])
+  end
 end
