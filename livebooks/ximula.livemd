@@ -1,0 +1,90 @@
+# Ximula
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.10.0", only: [:dev]},
+  {:ximula, path: Path.join(__DIR__, ".."), env: :dev}
+])
+```
+
+## Ximula Setup
+
+```elixir
+defmodule MySimulation do
+  alias Phoenix.PubSub
+  
+  alias Ximula.Torus
+  alias Ximula.Gatekeeper.Agent, as: Gatekeeper
+  alias Ximula.Sim.{Loop, Pipeline, Queue}
+  alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter  
+
+  def start do
+    children = [
+      Gatekeeper.agent_spec(MyWorld, data: nil, name: :world),
+      {Ximula.Gatekeeper.Agent, name: :gatekeeper, agent: :world},
+      {Loop, name: :my_sim_loop, supervisor: :loop_task_supervisor},
+      {Task.Supervisor, name: :loop_task_supervisor},
+      {Task.Supervisor, name: :task_runner_supervisor},
+      {PubSub, name: :my_pub_sub}
+    ]
+    Supervisor.start_link(children, strategy: :rest_for_one, name: :my_simulation)
+  end
+  
+  def create_world(size) do
+    world = Torus.create(size, size, fn _x, _y ->
+      %{
+        vegetation: 100
+      }
+    end)
+    Gatekeeper.direct_set(:gatekeeper, fn _ -> world end)
+  end
+
+  def create_queue(pipeline) do
+    %Queue{
+      name: :normal,
+      interval: 10_000
+    } 
+    |> Queue.add_pipeline(pipeline, %{data: :gatekeeper, opts: [gatekeeper: :gatekeeper, supervisor: :task_runner_supervisor]})
+  end
+
+  def create_pipeline() do
+    Pipeline.new_pipeline(notify: :metric, name: "Sim Pipeline")
+    |> Pipeline.add_stage(adapter: GatekeeperAdapter, notify: %{entity: :event_metric, all: :metric}, name: "Vegetation Sim")
+    |> Pipeline.add_step(MySimulation, :sim_vegetation, notify: {:metric, {3, 5}})
+  end
+
+  def sim_vegetation(change) do
+    raise change
+    change |> dbg()
+  end
+  
+end
+
+```
+
+```elixir
+MySimulation.start()
+```
+
+```elixir
+MySimulation.create_world(2)
+```
+
+```elixir
+Agent.get(:world, & &1)
+```
+
+```elixir
+Ximula.Gatekeeper.Agent.get(:gatekeeper, fn world -> Ximula.Grid.get(world, {1, 1}) end)
+```
+
+```elixir
+queue = MySimulation.create_pipeline() |> MySimulation.create_queue()
+Ximula.Sim.Loop.add_queue(:my_sim_loop, queue)
+```
+
+```elixir
+Ximula.Sim.Loop.start_sim(:my_sim_loop)
+Process.sleep(12_000)
+Ximula.Sim.Loop.stop_sim(:my_sim_loop)
+```

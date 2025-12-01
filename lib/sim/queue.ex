@@ -21,15 +21,15 @@ defmodule Ximula.Sim.Queue do
   end
 
   def execute(%Queue{func: func} = queue, []) when is_function(func) do
-    queue.func.(queue)
+    queue.func.()
   end
 
   def execute(%Queue{func: func} = queue, global_args) when is_function(func) do
-    queue.func.(queue, global_args)
+    queue.func.(global_args)
   end
 
-  def execute(%Queue{func: {module, sim_func, queue_args}} = queue, global_args) do
+  def execute(%Queue{func: {module, sim_func, queue_args}}, global_args) do
     args = Keyword.merge(global_args, queue_args)
-    apply(module, sim_func, [queue, args])
+    apply(module, sim_func, args)
   end
 end

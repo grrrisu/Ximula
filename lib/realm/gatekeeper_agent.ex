@@ -121,8 +121,18 @@ defmodule Ximula.Gatekeeper.Agent do
     }
   end
 
+  def child_spec(opts) do
+    %{
+      id: opts[:id] || __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: opts[:shutdown] || 5_000
+    }
+  end
+
   def start_link(opts \\ []) do
-    Server.start_link(Keyword.merge(opts, name: opts[:name]))
+    Server.start_link(Keyword.merge(opts, context: %{agent: opts[:agent]}))
   end
 
   def get(server \\ __MODULE__, fun) do
