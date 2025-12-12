@@ -159,7 +159,7 @@ defmodule Ximula.Sim.Notify do
 
   # --- Step Notification Strategies ---
 
-  def measure_step(%{notify: :none}, fun), do: fun.()
+  def measure_step(%{notify: {:none, nil}}, fun), do: fun.()
 
   def measure_step(%{notify: {:metric, entity}} = step, fun) do
     meta = %{entity: entity, module: step.module, function: step.function}

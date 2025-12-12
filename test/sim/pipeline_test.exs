@@ -8,6 +8,7 @@ defmodule Ximula.Sim.PipelineTest do
     test "creates empty pipeline" do
       pipeline = Pipeline.new_pipeline()
       assert pipeline.stages == []
+      assert pipeline.notify == :none
     end
 
     test "adds single stage" do
@@ -18,6 +19,7 @@ defmodule Ximula.Sim.PipelineTest do
       assert length(pipeline.stages) == 1
       assert hd(pipeline.stages).adapter == Single
       assert hd(pipeline.stages).steps == []
+      assert hd(pipeline.stages).notify == %{all: :none, entity: :none}
     end
 
     test "adds multiple stages" do

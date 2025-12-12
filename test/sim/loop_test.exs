@@ -5,11 +5,11 @@ defmodule Ximula.Sim.LoopTest do
   alias Ximula.Sim.LoopTest
   alias Ximula.Sim.Queue
 
-  def one(_queue), do: 1
+  def one(), do: 1
 
-  def callback(_queue, dest: test_case), do: send(test_case, :success)
+  def callback(dest: test_case), do: send(test_case, :success)
 
-  def too_long(_queue, dest: test_case) do
+  def too_long(dest: test_case) do
     Process.sleep(100)
     send(test_case, :success)
   end
@@ -63,7 +63,7 @@ defmodule Ximula.Sim.LoopTest do
 
     # @tag ci: :skip
     test "runs queue", %{loop: loop} do
-      queue = %Queue{name: "test", func: {LoopTest, :callback, [dest: self()]}, interval: 50}
+      queue = %Queue{name: "test", func: {LoopTest, :callback, [[dest: self()]]}, interval: 50}
       :ok = Loop.clear(loop)
       :ok = Loop.add_queue(loop, queue)
       :ok = Loop.start_sim(loop)
@@ -74,7 +74,7 @@ defmodule Ximula.Sim.LoopTest do
 
     # @tag ci: :skip
     test "handles timeout", %{loop: loop} do
-      queue = %Queue{name: "test", func: {LoopTest, :too_long, [dest: self()]}, interval: 50}
+      queue = %Queue{name: "test", func: {LoopTest, :too_long, [[dest: self()]]}, interval: 50}
       :ok = Loop.clear(loop)
       :ok = Loop.add_queue(loop, queue)
       :ok = Loop.start_sim(loop)
@@ -106,7 +106,7 @@ defmodule Ximula.Sim.LoopTest do
 
     test "should execute sim function" do
       loop_tasks = start_supervised!({Task.Supervisor, name: Sim.Loop.Task.Supervisor})
-      queue = %Queue{name: "test", func: &LoopTest.one/1}
+      queue = %Queue{name: "test", func: &LoopTest.one/0}
       %Queue{task: task, timer: timer} = Loop.tick(queue, loop_tasks, [])
       assert task != nil
       assert timer != nil
@@ -114,7 +114,7 @@ defmodule Ximula.Sim.LoopTest do
 
     test "should skip execution if task is still running" do
       loop_tasks = start_supervised!({Task.Supervisor, name: Sim.Loop.Task.Supervisor})
-      queue = %Queue{name: "test", func: &LoopTest.one/1, task: self(), timer: self()}
+      queue = %Queue{name: "test", func: &LoopTest.one/0, task: self(), timer: self()}
       %Queue{task: task, timer: timer} = Loop.tick(queue, loop_tasks, [])
       # still the same task
       assert task == self()

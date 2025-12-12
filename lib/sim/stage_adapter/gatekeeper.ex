@@ -1,6 +1,4 @@
 defmodule Ximula.Sim.StageAdapter.Gatekeeper do
-  alias Ximula.Gatekeeper.Agent, as: Gatekeeper
-
   @moduledoc """
   Executes a stage with entity locking for coordinated updates.
 
@@ -51,20 +49,25 @@ defmodule Ximula.Sim.StageAdapter.Gatekeeper do
   - Use fine-grained keys to minimize contention
   """
 
-  def get_data(%{data: keys, opts: opts}) do
-    Gatekeeper.lock(opts[:gatekeeper], keys, opts[:read_fun])
+  alias Ximula.Sim.{Pipeline, TaskRunner}
+
+  def run_stage(stage, %{data: data, opts: opts}) do
+    TaskRunner.sim(
+      data,
+      {__MODULE__, :run_entity, [stage]},
+      opts[:supervisor],
+      opts
+    )
+    |> Pipeline.handle_sim_results()
   end
 
-  def reduce_data({:error, reasons}, _gatekeeper, _fun, _keys), do: {:error, reasons}
-
-  def reduce_data({:ok, results}, %{data: keys, opts: opts}) do
-    results = Enum.map(results, fn %{position: position, field: field} -> {position, field} end)
-
-    :ok =
-      Gatekeeper.update_multi(opts[:gatekeeper], results, fn data ->
-        Enum.reduce(results, data, &opts[:write_fun].(&2, &1))
-      end)
-
-    {:ok, keys}
+  def run_entity(
+        key,
+        %{gatekeeper: gatekeeper, read_fun: read_fun, write_fun: write_fun} = stage
+      ) do
+    key
+    |> read_fun.(gatekeeper)
+    |> Pipeline.execute_steps(stage)
+    |> write_fun.(gatekeeper)
   end
 end

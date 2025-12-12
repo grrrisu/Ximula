@@ -212,7 +212,7 @@ defmodule Ximula.Sim.NotifyTest do
     end
 
     test "none notification does not emit telemetry" do
-      step = %{notify: :none}
+      step = %{notify: {:none, nil}}
       result = Notify.measure_step(step, fn -> :result end)
 
       assert result == :result
