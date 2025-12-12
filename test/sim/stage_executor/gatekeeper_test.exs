@@ -9,12 +9,13 @@ defmodule Ximula.Sim.StageAdapter.GatekeeperTest do
   alias Ximula.Sim.{Change, Pipeline}
   alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter
 
-  def get_field(grid, position) do
-    %{position: position, field: Grid.get(grid, position)}
+  def get_field(position, gatekeeper) do
+    field = Gatekeeper.lock(gatekeeper, position, &Grid.get(&1, position))
+    %{position: position, field: field}
   end
 
-  def put_field(grid, {position, value}) do
-    Grid.put(grid, position, value)
+  def put_field(%{position: position, field: field}, gatekeeper) do
+    Gatekeeper.update(gatekeeper, position, field, &Grid.put(&1, position, field))
   end
 
   def inc_counter(%Change{} = change) do
@@ -27,9 +28,7 @@ defmodule Ximula.Sim.StageAdapter.GatekeeperTest do
     data = Grid.create(2, 5, fn x, y -> 10 * x + y end)
     {:ok, agent} = start_supervised({Agent, fn -> data end})
     {:ok, gatekeeper} = start_supervised({GatekeeperServer, [context: %{agent: agent}]})
-
-    {:ok, supervisor} =
-      start_supervised({Task.Supervisor, name: StageAdapter.GatekeeperTest.Supervisor})
+    {:ok, supervisor} = start_supervised(Task.Supervisor)
 
     %{supervisor: supervisor, gatekeeper: gatekeeper}
   end
@@ -39,16 +38,18 @@ defmodule Ximula.Sim.StageAdapter.GatekeeperTest do
       data: Gatekeeper.get(gatekeeper, &Grid.positions(&1)),
       opts: [
         tick: 0,
-        supervisor: supervisor,
-        gatekeeper: gatekeeper,
-        read_fun: &get_field/2,
-        write_fun: &put_field/2
+        supervisor: supervisor
       ]
     }
 
     pipeline =
       Pipeline.new_pipeline()
-      |> Pipeline.add_stage(adapter: GatekeeperAdapter)
+      |> Pipeline.add_stage(
+        adapter: GatekeeperAdapter,
+        gatekeeper: gatekeeper,
+        read_fun: &get_field/2,
+        write_fun: &put_field/2
+      )
       |> Pipeline.add_step(__MODULE__, :inc_counter)
       |> Pipeline.add_step(__MODULE__, :inc_counter)
 

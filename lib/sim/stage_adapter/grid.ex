@@ -33,16 +33,29 @@ defmodule Ximula.Sim.StageAdapter.Grid do
   """
 
   alias Ximula.Grid
+  alias Ximula.Sim.{Pipeline, TaskRunner}
 
-  def get_data(%{data: grid}) do
+  def run_stage(stage, %{data: grid, opts: opts}) do
+    grid
+    |> get_fields()
+    |> TaskRunner.sim(
+      {Pipeline, :execute_steps, [stage]},
+      opts[:supervisor],
+      opts
+    )
+    |> Pipeline.handle_sim_results()
+    |> reduce_grid(grid)
+  end
+
+  defp get_fields(grid) do
     Grid.map(grid, fn x, y, field ->
       %{position: {x, y}, field: field}
     end)
   end
 
-  def reduce_data({:error, reasons}, _input), do: {:error, reasons}
+  def reduce_grid({:error, reasons}, _grid), do: {:error, reasons}
 
-  def reduce_data({:ok, results}, %{data: grid}) do
+  def reduce_grid({:ok, results}, grid) do
     results = Enum.map(results, fn %{position: position, field: field} -> {position, field} end)
     {:ok, Grid.apply_changes(grid, results)}
   end

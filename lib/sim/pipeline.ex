@@ -24,34 +24,37 @@ defmodule Ximula.Sim.Pipeline do
         |> add_step(CropSimulation, :grow_plants)
         |> add_stage(adapter: SingleAdapter, notify: :metric, name: "Population Sim")
         |> add_step(PopulationSimulation, :consume_food, notify: {:event_metric, {2, 3}})
+        |> add_stage(adapter: GatekeeperAdapter, notify: %{entity: event_metric, all: metric}, name: "Movement Sim", gatekeeper: :gatekeeper, read_fun: &Movement.get/2, write_fun: &Movement.put/3)
+        |> add_step(MoveSimulation, :check_soil, notify: {:metric, {3, 5}})
 
       initial_state = %{data: root, meta: %{tick: 0}}
       {:ok, final_state} = Ximula.Sim.Pipeline.execute(pipeline, initial_state)
   """
 
-  alias Ximula.Sim.{Change, Notify, TaskRunner}
+  alias Ximula.Sim.{Change, Notify}
 
   # --- Build Pipeline ---
 
   def new_pipeline(opts \\ []) do
-    %{stages: [], notify: Notify.build_stage_notification(opts[:notify]), name: opts[:name]}
+    %{stages: [], notify: Notify.build_pipeline_notification(opts[:notify]), name: opts[:name]}
   end
 
   # Add stage (starts new transaction boundary)
   def add_stage(pipeline, opts) do
-    stage = %{
-      name: opts[:name],
-      adapter: opts[:adapter],
-      on_error: opts[:on_error] || :raise,
-      notify: Notify.build_stage_notification(opts[:notify]),
-      steps: []
-    }
+    stage = %{on_error: :raise, steps: [], notify: Notify.build_stage_notification(nil)}
+
+    stage =
+      Enum.reduce(opts, stage, fn {key, value}, stage ->
+        case key do
+          :notify -> Map.put(stage, key, Notify.build_stage_notification(value))
+          _ -> Map.put(stage, key, value)
+        end
+      end)
 
     update_in(pipeline.stages, &(&1 ++ [stage]))
   end
 
   # Add step to current stage
-  @spec add_step(map(), any(), any(), nil | maybe_improper_list() | map()) :: map()
   def add_step(pipeline, module, function, opts \\ []) do
     step = %{
       module: module,
@@ -77,9 +80,9 @@ defmodule Ximula.Sim.Pipeline do
     {:ok, result.data}
   end
 
-  defp execute_stage(stage, %{data: _data, opts: opts} = result) do
+  defp execute_stage(%{adapter: adapter} = stage, %{data: _data, opts: opts} = result) do
     Notify.measure_stage(stage, fn ->
-      case run_stage(stage, result) do
+      case adapter.run_stage(stage, result) do
         {:ok, result} ->
           %{data: result, opts: opts}
 
@@ -89,20 +92,7 @@ defmodule Ximula.Sim.Pipeline do
     end)
   end
 
-  defp run_stage(%{adapter: adapter} = stage, %{data: _input_data, opts: opts} = input) do
-    data = adapter.get_data(input)
-
-    TaskRunner.sim(
-      data,
-      {__MODULE__, :execute_steps, [[stage: stage]]},
-      opts[:supervisor],
-      opts
-    )
-    |> handle_sim_results()
-    |> adapter.reduce_data(input)
-  end
-
-  def execute_steps(data, stage: stage) do
+  def execute_steps(data, stage) do
     Notify.measure_entity_stage(stage, fn ->
       Enum.reduce(
         stage.steps,
@@ -113,13 +103,13 @@ defmodule Ximula.Sim.Pipeline do
     end)
   end
 
-  def execute_step(%{module: module, function: function} = step, change) do
+  def execute_step(%{module: module, function: function} = step, %Change{} = change) do
     Notify.measure_step(step, fn ->
       apply(module, function, [change])
     end)
   end
 
-  defp handle_sim_results(%{ok: ok, exit: failed}) do
+  def handle_sim_results(%{ok: ok, exit: failed}) do
     cond do
       Enum.empty?(ok) ->
         {:error,
