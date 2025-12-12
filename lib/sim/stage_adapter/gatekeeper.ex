@@ -49,16 +49,11 @@ defmodule Ximula.Sim.StageAdapter.Gatekeeper do
   - Use fine-grained keys to minimize contention
   """
 
-  alias Ximula.Sim.{Pipeline, TaskRunner}
+  alias Ximula.Sim.Pipeline
 
   def run_stage(stage, %{data: data, opts: opts}) do
-    TaskRunner.sim(
-      data,
-      {__MODULE__, :run_entity, [stage]},
-      opts[:supervisor],
-      opts
-    )
-    |> Pipeline.handle_sim_results()
+    data
+    |> Pipeline.run_tasks({__MODULE__, :run_entity}, stage, opts)
   end
 
   def run_entity(

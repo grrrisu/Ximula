@@ -31,7 +31,7 @@ defmodule Ximula.Sim.Pipeline do
       {:ok, final_state} = Ximula.Sim.Pipeline.execute(pipeline, initial_state)
   """
 
-  alias Ximula.Sim.{Change, Notify}
+  alias Ximula.Sim.{Change, Notify, TaskRunner}
 
   # --- Build Pipeline ---
 
@@ -90,6 +90,16 @@ defmodule Ximula.Sim.Pipeline do
           raise "sim failed with #{inspect(reason)} with #{inspect(opts)}"
       end
     end)
+  end
+
+  def run_tasks(data, {module, fun}, stage, opts) do
+    TaskRunner.sim(
+      data,
+      {module, fun, [stage]},
+      opts[:supervisor],
+      opts
+    )
+    |> handle_sim_results()
   end
 
   def execute_steps(data, stage) do

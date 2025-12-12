@@ -33,17 +33,12 @@ defmodule Ximula.Sim.StageAdapter.Grid do
   """
 
   alias Ximula.Grid
-  alias Ximula.Sim.{Pipeline, TaskRunner}
+  alias Ximula.Sim.Pipeline
 
   def run_stage(stage, %{data: grid, opts: opts}) do
     grid
     |> get_fields()
-    |> TaskRunner.sim(
-      {Pipeline, :execute_steps, [stage]},
-      opts[:supervisor],
-      opts
-    )
-    |> Pipeline.handle_sim_results()
+    |> Pipeline.run_tasks({Pipeline, :execute_steps}, stage, opts)
     |> reduce_grid(grid)
   end
 
