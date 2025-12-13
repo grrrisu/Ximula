@@ -194,7 +194,7 @@ defmodule Ximula.Sim.Notify do
   defp broadcast(result, event, opts) do
     payload = prepare_payload(result, event, opts)
     topic = build_topic(event, payload, opts)
-    :ok = Phoenix.PubSub.broadcast(:TODO_PUB_SUB_NAME, topic, {event, payload})
+    :ok = Phoenix.PubSub.broadcast(opts[:pubsub], topic, {event, payload})
     result
   end
 
