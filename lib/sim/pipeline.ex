@@ -36,12 +36,22 @@ defmodule Ximula.Sim.Pipeline do
   # --- Build Pipeline ---
 
   def new_pipeline(opts \\ []) do
-    %{stages: [], notify: Notify.build_pipeline_notification(opts[:notify]), name: opts[:name]}
+    %{
+      stages: [],
+      name: opts[:name],
+      notify: Notify.build_pipeline_notification(opts[:notify]),
+      pubsub: opts[:pubsub] || Application.get_env(:ximula, :pubsub)
+    }
   end
 
   # Add stage (starts new transaction boundary)
   def add_stage(pipeline, opts) do
-    stage = %{on_error: :raise, steps: [], notify: Notify.build_stage_notification(nil)}
+    stage = %{
+      on_error: :raise,
+      steps: [],
+      notify: Notify.build_stage_notification(nil),
+      pubsub: opts[:pubsub] || Application.get_env(:ximula, :pubsub)
+    }
 
     stage =
       Enum.reduce(opts, stage, fn {key, value}, stage ->
@@ -59,7 +69,8 @@ defmodule Ximula.Sim.Pipeline do
     step = %{
       module: module,
       function: function,
-      notify: Notify.build_step_notification(opts[:notify])
+      notify: Notify.build_step_notification(opts[:notify]),
+      pubsub: opts[:pubsub] || Application.get_env(:ximula, :pubsub)
     }
 
     update_in(pipeline.stages, fn stages ->
