@@ -13,19 +13,24 @@ Mix.install([
 defmodule MySimulation do
   alias Phoenix.PubSub
   
-  alias Ximula.Torus
+  alias Ximula.{Grid, Torus}
   alias Ximula.Gatekeeper.Agent, as: Gatekeeper
-  alias Ximula.Sim.{Loop, Pipeline, Queue}
+  alias Ximula.Sim.{Change, Loop, Pipeline, Queue}
   alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter  
 
   def start do
     children = [
+      # Data layer - if this crashes, everything downstream is invalid
       Gatekeeper.agent_spec(MyWorld, data: nil, name: :world),
       {Ximula.Gatekeeper.Agent, name: :gatekeeper, agent: :world},
-      {Loop, name: :my_sim_loop, supervisor: :loop_task_supervisor},
+
+      # Infrastructure - depends on data layer being healthy
+      {PubSub, name: :my_pub_sub},
       {Task.Supervisor, name: :loop_task_supervisor},
       {Task.Supervisor, name: :task_runner_supervisor},
-      {PubSub, name: :my_pub_sub}
+
+      # Orchestration - depends on all infrastructure
+      {Loop, name: :my_sim_loop, supervisor: :loop_task_supervisor}
     ]
     Supervisor.start_link(children, strategy: :rest_for_one, name: :my_simulation)
   end
@@ -39,23 +44,45 @@ defmodule MySimulation do
     Gatekeeper.direct_set(:gatekeeper, fn _ -> world end)
   end
 
+  def positions(gatekeeper) do
+    Gatekeeper.get(gatekeeper, &Grid.positions(&1))
+  end
+
+  def get_field(position, gatekeeper) do
+    field = Gatekeeper.lock(gatekeeper, position, &Grid.get(&1, position))
+    Map.merge(field, %{position: position})
+  end
+
+  def put_field(%{position: position, vegetation: vegetation}, gatekeeper) do
+    Gatekeeper.update(gatekeeper, position, vegetation, &Grid.put(&1, position, %{vegetation: vegetation}))
+  end
+
   def create_queue(pipeline) do
     %Queue{
       name: :normal,
-      interval: 10_000
+      interval: 1_000
     } 
-    |> Queue.add_pipeline(pipeline, %{data: :gatekeeper, opts: [gatekeeper: :gatekeeper, supervisor: :task_runner_supervisor]})
+    |> Queue.add_pipeline(pipeline, %{
+      data: positions(:gatekeeper), 
+      opts: [tick: 0, supervisor: :task_runner_supervisor]
+    })
   end
 
   def create_pipeline() do
     Pipeline.new_pipeline(notify: :metric, name: "Sim Pipeline")
-    |> Pipeline.add_stage(adapter: GatekeeperAdapter, notify: %{entity: :event_metric, all: :metric}, name: "Vegetation Sim")
+    |> Pipeline.add_stage(
+      adapter: GatekeeperAdapter,
+      gatekeeper: :gatekeeper,
+      name: "Vegetation Sim", 
+      notify: %{entity: :none, all: :none},
+      read_fun: &get_field/2,
+      write_fun: &put_field/2
+    )
     |> Pipeline.add_step(MySimulation, :sim_vegetation, notify: {:metric, {3, 5}})
   end
 
-  def sim_vegetation(change) do
-    raise change
-    change |> dbg()
+  def sim_vegetation(%Change{data: %{vegetation: _vegetation}} = change) do
+    Change.change_by(change, :vegetation, 1)
   end
   
 end
@@ -85,6 +112,6 @@ Ximula.Sim.Loop.add_queue(:my_sim_loop, queue)
 
 ```elixir
 Ximula.Sim.Loop.start_sim(:my_sim_loop)
-Process.sleep(12_000)
+Process.sleep(5_000)
 Ximula.Sim.Loop.stop_sim(:my_sim_loop)
 ```
