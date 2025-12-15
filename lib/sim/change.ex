@@ -73,31 +73,49 @@ defmodule Ximula.Sim.Change do
   alias Ximula.Sim.Change
 
   def get(%Change{data: data, changes: changes}, key) do
-    case Map.get(data, key) do
-      nil -> Map.get(changes, key)
-      origin when is_number(origin) -> origin + Map.get(changes, key, 0)
-      origin -> Map.get(changes, key) || origin
+    key = List.wrap(key)
+
+    case get_in(data, key) do
+      nil -> get_in(changes, key)
+      origin when is_number(origin) -> origin + (get_in(changes, key) || 0)
+      origin -> get_in(changes, key) || origin
     end
   end
 
   def change_by(%Change{changes: changes} = change, key, delta) when is_number(delta) do
-    value = Map.get(changes, key, 0)
-    %Change{change | changes: Map.put(changes, key, value + delta)}
+    key = List.wrap(key)
+    value = get_in(changes, key) || 0
+    %Change{change | changes: put_in(changes, access_keys(key), value + delta)}
   end
 
   def set(%Change{data: data, changes: changes} = result, key, value) when is_number(value) do
-    origin = Map.get(data, key, 0)
-    changes = Map.put(changes, key, value - origin)
+    key = List.wrap(key)
+    origin = get_in(data, key) || 0
+    changes = put_in(changes, access_keys(key), value - origin)
     %{result | changes: changes}
   end
 
   def reduce(%Change{data: data, changes: changes}) do
     data
-    |> Map.keys()
+    |> nested_keys()
     |> Enum.reduce(data, fn key, data ->
-      change = Map.get(changes, key)
-      origin = Map.get(data, key)
-      Map.put(data, key, reduce_value(origin, change))
+      key = List.wrap(key)
+      change = get_in(changes, key)
+      origin = get_in(data, key)
+      put_in(data, access_keys(key), reduce_value(origin, change))
+    end)
+  end
+
+  defp access_keys(keys) do
+    Enum.map(keys, &Access.key(&1, %{}))
+  end
+
+  defp nested_keys(map, parent \\ [], list \\ []) do
+    Enum.reduce(map, list, fn {key, value}, list ->
+      case value do
+        %{} -> nested_keys(value, parent ++ [key], list)
+        _ -> [parent ++ [key] | list]
+      end
     end)
   end
 

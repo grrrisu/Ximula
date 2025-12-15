@@ -42,6 +42,27 @@ defmodule Ximula.Sim.ChangeTest do
     assert Change.get(change, :step) == 5
   end
 
+  describe "nested structure" do
+    test "get nested value" do
+      value = Change.get(%Change{data: %{field: %{vegetation: 5}}}, [:field, :vegetation])
+      assert value == 5
+    end
+
+    test "set nested value" do
+      change = Change.set(%Change{data: %{field: %{vegetation: 5}}}, [:field, :vegetation], 10)
+      value = Change.get(change, [:field, :vegetation])
+      assert value == 10
+    end
+
+    test "change nested value" do
+      change =
+        Change.change_by(%Change{data: %{field: %{vegetation: 5}}}, [:field, :vegetation], -2)
+
+      value = Change.get(change, [:field, :vegetation])
+      assert value == 3
+    end
+  end
+
   test "reduce changes" do
     change = %Change{
       data: %{counter: 5, new_stuff: nil, foo: "bar", read: :only},
@@ -50,5 +71,19 @@ defmodule Ximula.Sim.ChangeTest do
 
     result = Change.reduce(change)
     assert result == %{counter: 7, new_stuff: 7, foo: "baz", read: :only}
+  end
+
+  test "reduce changes with nested structure" do
+    change = %Change{
+      data: %{field: %{vegetation: 5, water: %{quality: 5, amount: 10}}, tick: 42},
+      changes: %{
+        field: %{vegetation: 3, soil: 7, water: %{amount: -3}},
+        tick: 1,
+        position: {0, 0}
+      }
+    }
+
+    result = Change.reduce(change)
+    assert result == %{field: %{vegetation: 8, water: %{quality: 5, amount: 7}}, tick: 43}
   end
 end
