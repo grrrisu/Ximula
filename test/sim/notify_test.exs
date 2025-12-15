@@ -171,24 +171,21 @@ defmodule Ximula.Sim.NotifyTest do
       refute_received {:telemetry, _, _, _}
     end
 
-    test "metric notification emits telemetry with ok/failed counts" do
+    test "metric stage entity notification emits telemetry" do
       stage = %{notify: %{entity: :metric}, name: "test_stage"}
 
       result =
         Notify.measure_entity_stage(stage, fn ->
-          %{ok: [1, 2, 3], failed: [4]}
+          42
         end)
 
-      assert result == %{ok: [1, 2, 3], failed: [4]}
+      assert result == 42
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :entity, :start], %{},
                        %{stage_name: "test_stage"}}
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :entity, :stop],
-                       _measurements, metadata}
-
-      assert metadata.ok == 3
-      assert metadata.failed == 1
+                       _measurements, %{stage_name: "test_stage"}}
     end
   end
 
@@ -199,8 +196,8 @@ defmodule Ximula.Sim.NotifyTest do
       :telemetry.attach_many(
         handler_id,
         [
-          [:ximula, :sim, :stage, :step, :start],
-          [:ximula, :sim, :stage, :step, :stop]
+          [:ximula, :sim, :pipeline, :stage, :step, :start],
+          [:ximula, :sim, :pipeline, :stage, :step, :stop]
         ],
         &__MODULE__.handle_telemetry/4,
         %{test_pid: self()}
@@ -230,13 +227,15 @@ defmodule Ximula.Sim.NotifyTest do
 
       assert result == :result
 
-      assert_received {:telemetry, [:ximula, :sim, :stage, :step, :start], %{}, metadata}
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :start], %{},
+                       metadata}
+
       assert metadata.entity == {10, 5}
       assert metadata.module == MyModule
       assert metadata.function == :my_function
 
-      assert_received {:telemetry, [:ximula, :sim, :stage, :step, :stop], %{duration: _},
-                       metadata}
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :stop],
+                       %{duration: _}, metadata}
 
       assert metadata.entity == {10, 5}
     end
@@ -252,7 +251,9 @@ defmodule Ximula.Sim.NotifyTest do
 
       assert result == :result
 
-      assert_received {:telemetry, [:ximula, :sim, :stage, :step, :start], %{}, metadata}
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :start], %{},
+                       metadata}
+
       assert metadata.entity == :single
     end
   end

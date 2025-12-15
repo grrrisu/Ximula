@@ -72,12 +72,14 @@ defmodule Ximula.Sim.Notify do
   def measure_pipeline(%{notify: :none}, fun), do: fun.()
 
   def measure_pipeline(%{notify: :metric} = pipeline, fun) do
+    meta = %{name: Map.get(pipeline, :name)}
+
     :telemetry.span(
       @telemetry_prefix ++ [:pipeline],
-      %{name: Map.get(pipeline, :name)},
+      meta,
       fn ->
         result = fun.()
-        {result, %{}}
+        {result, meta}
       end
     )
   end
@@ -102,12 +104,14 @@ defmodule Ximula.Sim.Notify do
   def measure_stage(%{notify: %{all: :none}}, fun), do: fun.()
 
   def measure_stage(%{notify: %{all: :metric}} = stage, fun) do
+    meta = %{stage_name: Map.get(stage, :name)}
+
     :telemetry.span(
       @telemetry_prefix ++ [:pipeline, :stage],
-      %{stage_name: stage.name},
+      meta,
       fn ->
         result = fun.()
-        {result, %{}}
+        {result, meta}
       end
     )
   end
@@ -132,12 +136,14 @@ defmodule Ximula.Sim.Notify do
   def measure_entity_stage(%{notify: %{entity: :none}}, fun), do: fun.()
 
   def measure_entity_stage(%{notify: %{entity: :metric}} = stage, fun) do
+    meta = %{stage_name: Map.get(stage, :name)}
+
     :telemetry.span(
       @telemetry_prefix ++ [:pipeline, :stage, :entity],
-      %{stage_name: stage.name},
+      meta,
       fn ->
-        %{ok: ok, failed: failed} = fun.()
-        {%{ok: ok, failed: failed}, %{ok: Enum.count(ok), failed: Enum.count(failed)}}
+        result = fun.()
+        {result, meta}
       end
     )
   end
@@ -165,7 +171,7 @@ defmodule Ximula.Sim.Notify do
     meta = %{entity: entity, module: step.module, function: step.function}
 
     :telemetry.span(
-      @telemetry_prefix ++ [:stage, :step],
+      @telemetry_prefix ++ [:pipeline, :stage, :step],
       meta,
       fn ->
         result = fun.()
