@@ -17,7 +17,7 @@ defmodule Ximula.Sim.Queue do
             task: nil
 
   def add_pipeline(%Queue{} = queue, %{} = pipeline, data) do
-    %{queue | func: {Pipeline, :execute, [pipeline, data]}}
+    %{queue | func: fn -> Pipeline.execute(pipeline, data) end}
   end
 
   def execute(%Queue{func: func} = queue, []) when is_function(func) do
