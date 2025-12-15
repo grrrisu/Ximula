@@ -151,4 +151,87 @@ defmodule Ximula.Sim.PipelineTest do
       end)
     end
   end
+
+  def handle_telemetry(event, measurements, meta, %{test_pid: pid}) do
+    send(pid, {:telemetry, event, measurements, meta})
+  end
+
+  describe "telemetry notifications" do
+    setup do
+      # Attach telemetry handler using module function to avoid performance warning
+      handler_id = "test-pipeline-#{:erlang.unique_integer()}"
+
+      :ok =
+        :telemetry.attach_many(
+          handler_id,
+          [
+            [:ximula, :sim, :pipeline, :start],
+            [:ximula, :sim, :pipeline, :stop],
+            [:ximula, :sim, :pipeline, :stage, :start],
+            [:ximula, :sim, :pipeline, :stage, :stop],
+            [:ximula, :sim, :pipeline, :stage, :entity, :start],
+            [:ximula, :sim, :pipeline, :stage, :entity, :stop],
+            [:ximula, :sim, :pipeline, :stage, :step, :start],
+            [:ximula, :sim, :pipeline, :stage, :step, :stop]
+          ],
+          &__MODULE__.handle_telemetry/4,
+          %{test_pid: self()}
+        )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      supervisor = start_supervised!({Task.Supervisor, name: PipelineTest.Supervisor})
+      %{supervisor: supervisor}
+    end
+
+    test "default notify options", %{supervisor: supervisor} do
+      initial_state = %{data: %{counter: 10}, opts: [tick: 0, supervisor: supervisor]}
+
+      pipeline =
+        Pipeline.new_pipeline(notify: :metric, name: "test_pipeline")
+        |> Pipeline.add_stage(
+          adapter: Single,
+          notify: %{all: :metric, entity: :metric},
+          name: "test_stage"
+        )
+        |> Pipeline.add_step(__MODULE__, :inc_counter, notify: {:metric, :counter})
+
+      {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
+
+      assert final_state.counter == 11
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :start], %{},
+                       %{name: "test_pipeline"}}
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :start], %{},
+                       %{stage_name: "test_stage"}}
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :entity, :start], %{},
+                       %{stage_name: "test_stage"}}
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :start], %{},
+                       %{
+                         function: :inc_counter,
+                         module: Ximula.Sim.PipelineTest,
+                         entity: :counter
+                       }}
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :stop],
+                       %{duration: _},
+                       %{
+                         function: :inc_counter,
+                         module: Ximula.Sim.PipelineTest,
+                         entity: :counter
+                       }}
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :entity, :stop],
+                       %{duration: _}, %{stage_name: "test_stage"}}
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :stop], %{duration: _},
+                       %{stage_name: "test_stage"}}
+
+      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stop], %{duration: _},
+                       %{name: "test_pipeline"}}
+    end
+  end
 end
