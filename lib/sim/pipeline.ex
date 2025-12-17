@@ -92,24 +92,24 @@ defmodule Ximula.Sim.Pipeline do
   end
 
   defp execute_stage(%{adapter: adapter} = stage, %{data: _data, opts: opts} = result) do
-    Notify.measure_stage(stage, fn ->
-      case adapter.run_stage(stage, result) do
-        {:ok, result} ->
-          %{data: result, opts: opts}
+    case adapter.run_stage(stage, result) do
+      {:ok, result} ->
+        %{data: result, opts: opts}
 
-        {:error, reason} ->
-          raise "sim failed with #{inspect(reason)} with #{inspect(opts)}"
-      end
-    end)
+      {:error, reason} ->
+        raise "sim failed with #{inspect(reason)} with #{inspect(opts)}"
+    end
   end
 
   def run_tasks(data, {module, fun}, stage, opts) do
-    TaskRunner.sim(
-      data,
-      {module, fun, [stage]},
-      opts[:supervisor],
-      opts
-    )
+    Notify.measure_stage(stage, fn ->
+      TaskRunner.sim(
+        data,
+        {module, fun, [stage]},
+        opts[:supervisor],
+        opts
+      )
+    end)
     |> handle_sim_results()
   end
 

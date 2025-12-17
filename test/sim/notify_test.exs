@@ -132,15 +132,19 @@ defmodule Ximula.Sim.NotifyTest do
 
     test "metric notification emits telemetry span" do
       stage = %{notify: %{all: :metric}, name: "test_stage"}
-      result = Notify.measure_stage(stage, fn -> :result end)
 
-      assert result == :result
+      result =
+        Notify.measure_stage(stage, fn ->
+          %{ok: [1, 2, 3], failed: [404]}
+        end)
+
+      assert result == %{ok: [1, 2, 3], failed: [404]}
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :start], %{},
                        %{stage_name: "test_stage"}}
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :stop], %{duration: _},
-                       _metadata}
+                       %{ok: 3, failed: 1}}
     end
   end
 
