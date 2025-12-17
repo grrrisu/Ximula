@@ -228,7 +228,7 @@ defmodule Ximula.Sim.PipelineTest do
                        %{duration: _}, %{stage_name: "test_stage"}}
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :stop], %{duration: _},
-                       %{stage_name: "test_stage"}}
+                       %{stage_name: "test_stage", ok: 1, failed: 0}}
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stop], %{duration: _},
                        %{name: "test_pipeline"}}

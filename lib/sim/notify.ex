@@ -111,7 +111,13 @@ defmodule Ximula.Sim.Notify do
       meta,
       fn ->
         result = fun.()
-        {result, meta}
+
+        {result,
+         %{
+           stage_name: Map.get(stage, :name),
+           ok: Map.get(result, :ok) |> List.wrap() |> Enum.count(),
+           failed: Map.get(result, :failed) |> List.wrap() |> Enum.count()
+         }}
       end
     )
   end
