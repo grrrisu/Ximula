@@ -114,7 +114,7 @@ defmodule Ximula.Sim.Pipeline do
   end
 
   def execute_steps(data, stage) do
-    Notify.measure_entity_stage(stage, fn ->
+    Notify.measure_entity_stage(stage, data, fn ->
       Enum.reduce(
         stage.steps,
         %Change{data: data},
@@ -125,7 +125,7 @@ defmodule Ximula.Sim.Pipeline do
   end
 
   def execute_step(%{module: module, function: function} = step, %Change{} = change) do
-    Notify.measure_step(step, fn ->
+    Notify.measure_step(step, change, fn ->
       apply(module, function, [change])
     end)
   end

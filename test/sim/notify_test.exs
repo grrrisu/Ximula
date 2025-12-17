@@ -32,13 +32,15 @@ defmodule Ximula.Sim.NotifyTest do
     end
 
     test "builds notification with map" do
-      result = Notify.build_stage_notification(%{all: :metric, entity: :event})
-      assert result == %{all: :metric, entity: :event}
+      result =
+        Notify.build_stage_notification(%{all: :metric, entity: {:event, fn _ -> true end}})
+
+      assert %{all: :metric, entity: {:event, _}} = result
     end
 
     test "builds notification with partial map" do
       result = Notify.build_stage_notification(%{all: :metric})
-      assert result == %{all: :metric, entity: :none}
+      assert result == %{all: :metric, entity: {:none, nil}}
     end
   end
 
@@ -48,12 +50,12 @@ defmodule Ximula.Sim.NotifyTest do
     end
 
     test "builds notification with entity" do
-      assert Notify.build_step_notification({:metric, :my_entity}) == {:metric, :my_entity}
-      assert Notify.build_step_notification({:event, {10, 5}}) == {:event, {10, 5}}
+      assert {:metric, _} = Notify.build_step_notification({:metric, fn _ -> true end})
+      assert {:event, _} = Notify.build_step_notification({:event, fn _ -> true end})
     end
 
     test "raises when entity is nil" do
-      assert_raise RuntimeError, "step notifications needs an entity", fn ->
+      assert_raise RuntimeError, "step notifications needs a filter function", fn ->
         Notify.build_step_notification({:metric, nil})
       end
     end
@@ -168,19 +170,19 @@ defmodule Ximula.Sim.NotifyTest do
     end
 
     test "none notification does not emit telemetry" do
-      stage = %{notify: %{entity: :none}}
-      result = Notify.measure_entity_stage(stage, fn -> :result end)
+      stage = %{notify: %{entity: {:none, nil}}}
+      result = Notify.measure_entity_stage(stage, 21, fn -> 2 * 21 end)
 
-      assert result == :result
+      assert result == 42
       refute_received {:telemetry, _, _, _}
     end
 
     test "metric stage entity notification emits telemetry" do
-      stage = %{notify: %{entity: :metric}, name: "test_stage"}
+      stage = %{notify: %{entity: {:metric, fn _ -> true end}}, name: "test_stage"}
 
       result =
-        Notify.measure_entity_stage(stage, fn ->
-          42
+        Notify.measure_entity_stage(stage, 21, fn ->
+          2 * 21
         end)
 
       assert result == 42
@@ -190,6 +192,21 @@ defmodule Ximula.Sim.NotifyTest do
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :entity, :stop],
                        _measurements, %{stage_name: "test_stage"}}
+    end
+
+    test "metric stage entity notification filters telemetry" do
+      stage = %{notify: %{entity: {:metric, fn _ -> false end}}, name: "test_stage"}
+
+      result =
+        Notify.measure_entity_stage(stage, 21, fn ->
+          2 * 21
+        end)
+
+      assert result == 42
+
+      refute_received {:telemetry, _, _, _}
+
+      refute_received {:telemetry, _, _, _}
     end
   end
 
@@ -214,51 +231,46 @@ defmodule Ximula.Sim.NotifyTest do
 
     test "none notification does not emit telemetry" do
       step = %{notify: {:none, nil}}
-      result = Notify.measure_step(step, fn -> :result end)
+      result = Notify.measure_step(step, 21, fn -> 21 * 2 end)
 
-      assert result == :result
+      assert result == 42
       refute_received {:telemetry, _, _, _}
     end
 
     test "metric notification emits telemetry span with entity" do
       step = %{
-        notify: {:metric, {10, 5}},
+        notify: {:metric, fn _ -> true end},
         module: MyModule,
         function: :my_function
       }
 
-      result = Notify.measure_step(step, fn -> :result end)
+      result = Notify.measure_step(step, 21, fn -> 21 * 2 end)
 
-      assert result == :result
+      assert result == 42
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :start], %{},
                        metadata}
 
-      assert metadata.entity == {10, 5}
+      assert metadata.change == 21
       assert metadata.module == MyModule
       assert metadata.function == :my_function
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :stop],
                        %{duration: _}, metadata}
 
-      assert metadata.entity == {10, 5}
+      assert metadata.change == 42
     end
 
-    test "metric notification with :single entity" do
+    test "metric notification filters telemetry span with entity" do
       step = %{
-        notify: {:metric, :single},
+        notify: {:metric, fn _ -> false end},
         module: MyModule,
         function: :my_function
       }
 
-      result = Notify.measure_step(step, fn -> :result end)
-
-      assert result == :result
-
-      assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :start], %{},
-                       metadata}
-
-      assert metadata.entity == :single
+      result = Notify.measure_step(step, 21, fn -> 21 * 2 end)
+      assert result == 42
+      refute_received {:telemetry, _, _, _}
     end
   end
 
@@ -292,7 +304,7 @@ defmodule Ximula.Sim.NotifyTest do
 
       log =
         capture_log(fn ->
-          Notify.measure_entity_stage(stage, fn -> :result end)
+          Notify.measure_entity_stage(stage, 21, fn -> :result end)
         end)
 
       assert log =~ "unknown entity stage notification type :unknown"
@@ -303,10 +315,10 @@ defmodule Ximula.Sim.NotifyTest do
 
       log =
         capture_log(fn ->
-          Notify.measure_step(step, fn -> :result end)
+          Notify.measure_step(step, 21, fn -> 21 * 2 end)
         end)
 
-      assert log =~ "unknown notification type :unknown"
+      assert log =~ "unknown step notification type :unknown"
     end
   end
 
