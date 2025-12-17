@@ -191,10 +191,10 @@ defmodule Ximula.Sim.PipelineTest do
         Pipeline.new_pipeline(notify: :metric, name: "test_pipeline")
         |> Pipeline.add_stage(
           adapter: Single,
-          notify: %{all: :metric, entity: :metric},
+          notify: %{all: :metric, entity: {:metric, fn _data -> true end}},
           name: "test_stage"
         )
-        |> Pipeline.add_step(__MODULE__, :inc_counter, notify: {:metric, :counter})
+        |> Pipeline.add_step(__MODULE__, :inc_counter, notify: {:metric, fn _data -> true end})
 
       {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
 
@@ -213,7 +213,7 @@ defmodule Ximula.Sim.PipelineTest do
                        %{
                          function: :inc_counter,
                          module: Ximula.Sim.PipelineTest,
-                         entity: :counter
+                         change: %Change{data: %{counter: _}}
                        }}
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :step, :stop],
@@ -221,7 +221,7 @@ defmodule Ximula.Sim.PipelineTest do
                        %{
                          function: :inc_counter,
                          module: Ximula.Sim.PipelineTest,
-                         entity: :counter
+                         change: %Change{data: %{counter: _}}
                        }}
 
       assert_received {:telemetry, [:ximula, :sim, :pipeline, :stage, :entity, :stop],

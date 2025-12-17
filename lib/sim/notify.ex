@@ -28,7 +28,7 @@ defmodule Ximula.Sim.Notify do
   def build_stage_notification(%{} = notify) do
     %{
       all: Map.get(notify, :all) |> build_notification(),
-      entity: Map.get(notify, :entity) |> build_notification()
+      entity: Map.get(notify, :entity) |> build_step_notification
     }
   end
 
@@ -37,11 +37,11 @@ defmodule Ximula.Sim.Notify do
   end
 
   def build_step_notification({_notify, nil}) do
-    raise "step notifications needs an entity"
+    raise "step notifications needs a filter function"
   end
 
-  def build_step_notification({notify, entity}) do
-    {build_notification(notify), entity}
+  def build_step_notification({notify, filter}) when is_function(filter) do
+    {build_notification(notify), filter}
   end
 
   def build_step_notification(nil), do: {:none, nil}
@@ -128,7 +128,7 @@ defmodule Ximula.Sim.Notify do
   end
 
   def measure_stage(%{notify: %{all: :event_metric}} = stage, fun) do
-    measure_pipeline(put_in(stage, [:notify, :all], :metric), fun)
+    measure_stage(put_in(stage, [:notify, :all], :metric), fun)
     |> broadcast(:stage_completed, stage)
   end
 
@@ -139,65 +139,74 @@ defmodule Ximula.Sim.Notify do
 
   # --- Entity Stage Notification ---
 
-  def measure_entity_stage(%{notify: %{entity: :none}}, fun), do: fun.()
+  def measure_entity_stage(%{notify: %{entity: :none}}, _data, fun), do: fun.()
 
-  def measure_entity_stage(%{notify: %{entity: :metric}} = stage, fun) do
-    meta = %{stage_name: Map.get(stage, :name)}
+  def measure_entity_stage(%{notify: %{entity: {:metric, filter}}} = stage, data, fun)
+      when is_function(filter) do
+    if filter.(data) do
+      meta = %{stage_name: Map.get(stage, :name)}
 
-    :telemetry.span(
-      @telemetry_prefix ++ [:pipeline, :stage, :entity],
-      meta,
-      fn ->
-        result = fun.()
-        {result, meta}
-      end
-    )
+      :telemetry.span(
+        @telemetry_prefix ++ [:pipeline, :stage, :entity],
+        meta,
+        fn ->
+          result = fun.()
+          {result, meta}
+        end
+      )
+    else
+      fun.()
+    end
   end
 
-  def measure_entity_stage(%{notify: %{entity: :event}} = stage, fun) do
+  def measure_entity_stage(%{notify: %{entity: :event}} = stage, _data, fun) do
     fun.()
     |> broadcast(:entity_stage_completed, stage)
   end
 
-  def measure_entity_stage(%{notify: %{entity: :event_metric}} = stage, fun) do
-    measure_pipeline(put_in(stage, [:notify, :entity], :metric), fun)
+  def measure_entity_stage(%{notify: %{entity: :event_metric}} = stage, data, fun) do
+    measure_entity_stage(put_in(stage, [:notify, :entity], :metric), data, fun)
     |> broadcast(:entity_stage_completed, stage)
   end
 
-  def measure_entity_stage(%{notify: %{entity: unknown}}, fun) do
+  def measure_entity_stage(%{notify: %{entity: unknown}}, _data, fun) do
     Logger.warning("unknown entity stage notification type #{inspect(unknown)}")
     fun.()
   end
 
   # --- Step Notification Strategies ---
 
-  def measure_step(%{notify: {:none, nil}}, fun), do: fun.()
+  def measure_step(%{notify: {:none, nil}}, _change, fun), do: fun.()
 
-  def measure_step(%{notify: {:metric, entity}} = step, fun) do
-    meta = %{entity: entity, module: step.module, function: step.function}
+  def measure_step(%{notify: {:metric, filter}} = step, change, fun) when is_function(filter) do
+    if filter.(change) do
+      meta = %{change: change, module: step.module, function: step.function}
 
-    :telemetry.span(
-      @telemetry_prefix ++ [:pipeline, :stage, :step],
-      meta,
-      fn ->
-        result = fun.()
-        {result, meta}
-      end
-    )
+      :telemetry.span(
+        @telemetry_prefix ++ [:pipeline, :stage, :step],
+        meta,
+        fn ->
+          result = fun.()
+          {result, Map.put(meta, :change, result)}
+        end
+      )
+    else
+      fun.()
+    end
   end
 
-  def measure_step(%{notify: {:event, _entity}} = step, fun) do
+  def measure_step(%{notify: {:event, _filter}} = step, _change, fun) do
     fun.()
     |> broadcast(:step_completed, step)
   end
 
-  def measure_step(%{notify: {:event_metric, entity}} = step, fun) do
-    measure_step(%{step | notify: {:metric, entity}}, fun)
+  def measure_step(%{notify: {:event_metric, filter}} = step, change, fun) do
+    measure_step(%{step | notify: {:metric, filter}}, change, fun)
     |> broadcast(:step_completed, step)
   end
 
-  def measure_step(%{notify: {unknown, entity}}, fun) do
-    Logger.warning("unknown notification type #{inspect(unknown)} for entity #{inspect(entity)}")
+  def measure_step(%{notify: {unknown, _filter}}, _change, fun) do
+    Logger.warning("unknown step notification type #{inspect(unknown)}")
     fun.()
   end
 
