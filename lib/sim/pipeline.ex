@@ -86,9 +86,10 @@ defmodule Ximula.Sim.Pipeline do
     result =
       Notify.measure_pipeline(pipeline, fn ->
         Enum.reduce(pipeline.stages, result, &execute_stage/2)
+        |> Map.fetch!(:data)
       end)
 
-    {:ok, result.data}
+    {:ok, result}
   end
 
   defp execute_stage(%{adapter: adapter} = stage, %{data: _data, opts: opts} = result) do

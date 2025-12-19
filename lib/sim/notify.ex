@@ -141,9 +141,8 @@ defmodule Ximula.Sim.Notify do
 
   def measure_entity_stage(%{notify: %{entity: :none}}, _data, fun), do: fun.()
 
-  def measure_entity_stage(%{notify: %{entity: {:metric, filter}}} = stage, data, fun)
-      when is_function(filter) do
-    if filter.(data) do
+  def measure_entity_stage(%{notify: %{entity: {:metric, filter}}} = stage, data, fun) do
+    apply_filter(filter.(data), fun, fn ->
       meta = %{stage_name: Map.get(stage, :name)}
 
       :telemetry.span(
@@ -154,19 +153,25 @@ defmodule Ximula.Sim.Notify do
           {result, meta}
         end
       )
-    else
+    end)
+  end
+
+  def measure_entity_stage(%{notify: %{entity: {:event, filter}}} = stage, data, fun) do
+    apply_filter(filter.(data), fun, fn ->
       fun.()
-    end
+      |> broadcast(:entity_stage_completed, stage)
+    end)
   end
 
-  def measure_entity_stage(%{notify: %{entity: :event}} = stage, _data, fun) do
-    fun.()
-    |> broadcast(:entity_stage_completed, stage)
-  end
-
-  def measure_entity_stage(%{notify: %{entity: :event_metric}} = stage, data, fun) do
-    measure_entity_stage(put_in(stage, [:notify, :entity], :metric), data, fun)
-    |> broadcast(:entity_stage_completed, stage)
+  def measure_entity_stage(%{notify: %{entity: {:event_metric, filter}}} = stage, data, fun) do
+    apply_filter(filter.(data), fun, fn ->
+      measure_entity_stage(
+        put_in(stage, [:notify, :entity], {:metric, filter}),
+        data,
+        fun
+      )
+      |> broadcast(:entity_stage_completed, stage)
+    end)
   end
 
   def measure_entity_stage(%{notify: %{entity: unknown}}, _data, fun) do
@@ -178,8 +183,8 @@ defmodule Ximula.Sim.Notify do
 
   def measure_step(%{notify: {:none, nil}}, _change, fun), do: fun.()
 
-  def measure_step(%{notify: {:metric, filter}} = step, change, fun) when is_function(filter) do
-    if filter.(change) do
+  def measure_step(%{notify: {:metric, filter}} = step, change, fun) do
+    apply_filter(filter.(change), fun, fn ->
       meta = %{change: change, module: step.module, function: step.function}
 
       :telemetry.span(
@@ -190,24 +195,31 @@ defmodule Ximula.Sim.Notify do
           {result, Map.put(meta, :change, result)}
         end
       )
-    else
-      fun.()
-    end
+    end)
   end
 
-  def measure_step(%{notify: {:event, _filter}} = step, _change, fun) do
-    fun.()
-    |> broadcast(:step_completed, step)
+  def measure_step(%{notify: {:event, filter}} = step, change, fun) do
+    apply_filter(filter.(change), fun, fn ->
+      fun.()
+      |> broadcast(:step_completed, step)
+    end)
   end
 
   def measure_step(%{notify: {:event_metric, filter}} = step, change, fun) do
-    measure_step(%{step | notify: {:metric, filter}}, change, fun)
-    |> broadcast(:step_completed, step)
+    apply_filter(filter.(change), fun, fn ->
+      measure_step(%{step | notify: {:metric, filter}}, change, fun)
+      |> broadcast(:step_completed, step)
+    end)
   end
 
   def measure_step(%{notify: {unknown, _filter}}, _change, fun) do
     Logger.warning("unknown step notification type #{inspect(unknown)}")
     fun.()
+  end
+
+  defp apply_filter(to_measure, direct_fun, measure_fun)
+       when is_function(direct_fun) and is_function(measure_fun) do
+    if to_measure, do: measure_fun.(), else: direct_fun.()
   end
 
   # --- PubSub ---

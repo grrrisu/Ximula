@@ -234,4 +234,64 @@ defmodule Ximula.Sim.PipelineTest do
                        %{name: "test_pipeline"}}
     end
   end
+
+  describe "event notifications" do
+    setup do
+      start_supervised!({Phoenix.PubSub, name: :pipeline_test_pubsub})
+      :ok = Phoenix.PubSub.subscribe(:pipeline_test_pubsub, "sim:pipeline:test_pipeline")
+      :ok = Phoenix.PubSub.subscribe(:pipeline_test_pubsub, "sim:pipeline:stage:test_stage")
+
+      :ok =
+        Phoenix.PubSub.subscribe(:pipeline_test_pubsub, "sim:pipeline:stage:test_stage:entity")
+
+      :ok = Phoenix.PubSub.subscribe(:pipeline_test_pubsub, "sim:pipeline:stage:entity:step")
+
+      supervisor = start_supervised!({Task.Supervisor, name: PipelineTest.Supervisor})
+      %{supervisor: supervisor}
+    end
+
+    test "default notify options", %{supervisor: supervisor} do
+      initial_state = %{data: %{counter: 10}, opts: [tick: 0, supervisor: supervisor]}
+
+      pipeline =
+        Pipeline.new_pipeline(
+          notify: :event,
+          name: "test_pipeline",
+          pubsub: :pipeline_test_pubsub
+        )
+        |> Pipeline.add_stage(
+          adapter: Single,
+          notify: %{all: :event, entity: {:event, fn _data -> true end}},
+          name: "test_stage",
+          pubsub: :pipeline_test_pubsub
+        )
+        |> Pipeline.add_step(__MODULE__, :inc_counter,
+          notify: {:event, fn _data -> true end},
+          pubsub: :pipeline_test_pubsub
+        )
+
+      {:ok, final_state} = Pipeline.execute(pipeline, initial_state)
+
+      assert final_state.counter == 11
+
+      assert_received {:pipeline_completed,
+                       %{result: %{counter: 11}, pipeline_name: "test_pipeline"}}
+
+      assert_received {:stage_completed,
+                       %{
+                         result: %{exit: [], ok: [%{counter: 11}]},
+                         stage_name: "test_stage"
+                       }}
+
+      assert_received {:entity_stage_completed,
+                       %{result: %{counter: 11}, stage_name: "test_stage"}}
+
+      assert_received {:step_completed,
+                       %{
+                         result: %Change{data: %{counter: 10}, changes: %{counter: 1}},
+                         step_function: :inc_counter,
+                         step_module: Ximula.Sim.PipelineTest
+                       }}
+    end
+  end
 end
