@@ -15,7 +15,8 @@ defmodule Ximula.Sim.StageAdapter.GatekeeperTest do
   end
 
   def put_field(%{position: position, field: field}, gatekeeper) do
-    Gatekeeper.update(gatekeeper, position, field, &Grid.put(&1, position, field))
+    :ok = Gatekeeper.update(gatekeeper, position, field, &Grid.put(&1, position, field))
+    position
   end
 
   def inc_counter(%Change{} = change) do
@@ -53,7 +54,8 @@ defmodule Ximula.Sim.StageAdapter.GatekeeperTest do
       |> Pipeline.add_step(__MODULE__, :inc_counter)
       |> Pipeline.add_step(__MODULE__, :inc_counter)
 
-    {:ok, _keys} = Pipeline.execute(pipeline, initial_state)
+    {:ok, keys} = Pipeline.execute(pipeline, initial_state)
+    assert keys |> length() == Gatekeeper.get(gatekeeper, &Grid.positions(&1)) |> length()
 
     assert Gatekeeper.get(gatekeeper, &Grid.get(&1, 0, 0)) == 0
     assert Gatekeeper.get(gatekeeper, &Grid.get(&1, 0, 2)) == 2 + 2 + 2
