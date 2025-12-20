@@ -1,3 +1,5 @@
+<!-- livebook:{"app_settings":{"slug":"ximula"}} -->
+
 # Ximula
 
 ```elixir
@@ -12,11 +14,11 @@ Mix.install([
 ```elixir
 defmodule MySimulation do
   alias Phoenix.PubSub
-
+  
   alias Ximula.{Grid, Torus}
   alias Ximula.Gatekeeper.Agent, as: Gatekeeper
   alias Ximula.Sim.{Change, Loop, Pipeline, Queue}
-  alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter
+  alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter  
 
   def start do
     children = [
@@ -34,7 +36,7 @@ defmodule MySimulation do
     ]
     Supervisor.start_link(children, strategy: :rest_for_one, name: :my_simulation)
   end
-
+  
   def create_world(size) do
     world = Torus.create(size, size, fn _x, _y ->
       %{
@@ -62,33 +64,34 @@ defmodule MySimulation do
     %Queue{
       name: :normal,
       interval: 1_000
-    }
+    } 
     |> Queue.add_pipeline(pipeline, %{
-      data: positions(:gatekeeper),
+      data: positions(:gatekeeper), 
       opts: [tick: 0, supervisor: :task_runner_supervisor]
     })
   end
 
   def create_pipeline() do
-    Pipeline.new_pipeline(notify: :metric, name: "Sim Pipeline")
+    Pipeline.new_pipeline(notify: :event_metric, name: "sim_pipeline", pubsub: :my_pub_sub)
     |> Pipeline.add_stage(
       adapter: GatekeeperAdapter,
       gatekeeper: :gatekeeper,
-      name: "Vegetation Sim",
-      notify: %{all: :metric, entity: {:metric, fn field -> field.position == {0, 0} end}},
+      name: "field_stage", 
+      notify: %{all: :event_metric, entity: {:event_metric, fn field -> field.position == {0, 0} end}},
+      pubsub: :my_pub_sub,
       read_fun: &get_field/2,
       write_fun: &put_field/2
     )
     |> Pipeline.add_step(
-      MySimulation,
-      :sim_vegetation,
+      MySimulation, 
+      :sim_vegetation, 
       notify: {:metric, fn change -> Change.get(change, :position) == {0, 0} end})
   end
 
   def sim_vegetation(%Change{data: %{vegetation: _vegetation}} = change) do
     Change.change_by(change, :vegetation, 1)
   end
-
+  
 end
 
 ```
@@ -115,14 +118,19 @@ import Kino.Shorts
 
 {:ok, data_agent} = Agent.start_link(fn -> [] end)
 frame = Kino.Frame.new() |> Kino.render()
-metric_table = Kino.DataTable.new([], keys: [:id, :event, :duration])
+metric_table = Kino.DataTable.new([], keys: [:id, :time, :event, :duration])
 Kino.Frame.render(frame, metric_table)
 
 defmodule TelemetryTable do
   def handle_event(event, measurements, _meta, %{table: metric_table, agent: agent}) do
     data = Agent.get(agent, & &1)
     id = Map.get(measurements, :monotonic_time)
-    data = [%{id: id, event: event, duration: Map.get(measurements, :duration, 0)} | data]
+    data = [%{
+      id: id, 
+      time: DateTime.utc_now(),
+      event: event, 
+      duration: Map.get(measurements, :duration, 0) |> System.convert_time_unit(:native, :microsecond)
+    } | data]
     Agent.update(agent, fn _ -> data end)
     Kino.DataTable.update(metric_table, data)
   end
@@ -145,7 +153,32 @@ end
     %{table: metric_table, agent: data_agent}
   )
 
+      
+```
 
+```elixir
+defmodule EventListener do
+
+  def start do
+    Task.start(fn ->
+      :ok = Phoenix.PubSub.subscribe(:my_pub_sub, "sim:pipeline:sim_pipeline")
+      :ok = Phoenix.PubSub.subscribe(:my_pub_sub, "sim:pipeline:stage:field_stage")
+      :ok = Phoenix.PubSub.subscribe(:my_pub_sub, "sim:pipeline:stage:field_stage:entity")
+      listen_loop()
+    end)
+  end
+
+  def listen_loop() do
+    receive do
+      msg -> IO.inspect(msg, label: "Received message")
+    after
+      1000 -> :ok
+    end
+    listen_loop()
+  end
+
+end
+EventListener.start()
 ```
 
 ```elixir
@@ -155,7 +188,15 @@ Ximula.Sim.Loop.stop_sim(:my_sim_loop)
 ```
 
 ```elixir
+receive do
+  msg -> IO.inspect(msg, label: "Received message")
+after
+  1000 -> IO.puts("No message in 5 seconds")
+end
+```
+
+```elixir
 Ximula.Gatekeeper.Agent.get(:gatekeeper, fn world -> Ximula.Grid.get(world, {1, 1}) end)
 ```
 
-<!-- livebook:{"offset":4400,"stamp":{"token":"XCP.6i11_l6IdZ8-g6G0zMYqW24jXdvldqjHRGoAtDMCR8pfvGoGl82e4qM572SysOgN-jhVURAKG7gNHEyl_h3sQKzu0meuq21P0zUj3-teL5CrbAmpQQG04Gzi","version":2}} -->
+<!-- livebook:{"offset":5262,"stamp":{"token":"XCP.jlB1lA0zfUyxg8p6qcOqwasxhxFWrGAZHzzjjj0rHGNkCExDdFTCroLXTohAGKsxVuBFq2AV4Q_TWV932MACxPvY--rtgBbIaFiHIUonWCotb4qWfh4lMH-E","version":2}} -->
