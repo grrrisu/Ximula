@@ -9,10 +9,130 @@ Mix.install([
 ])
 ```
 
-## Ximula Setup
+## Overview
+
+This Livebook demonstrates the Ximula.Sim framework - a composable, pipeline-based simulation library for Elixir. The framework separates simulation logic (pure functions) from execution strategy (parallel/sequential) and provides observability through Telemetry and PubSub.
+
+<!-- livebook:{"break_markdown":true} -->
+
+```mermaid
+graph TB
+    Supervisor[Supervisor<br/>strategy: :rest_for_one]
+    
+    Supervisor --> Agent[Agent: MyWorld<br/>holds grid data]
+    Supervisor --> GK[Gatekeeper<br/>locked access wrapper]
+    Supervisor --> PubSub[Phoenix.PubSub<br/>event broadcasting]
+    Supervisor --> LoopTaskSup[Task.Supervisor<br/>loop tasks]
+    Supervisor --> RunnerTaskSup[Task.Supervisor<br/>simulation tasks]
+    Supervisor --> Loop[Loop GenServer<br/>queue orchestration]
+
+    style Agent fill:#90EE90
+    style GK fill:#90EE90
+    style Loop fill:#FFB6C1
+    style PubSub fill:#87CEEB
+    style LoopTaskSup fill:#FFD700
+    style RunnerTaskSup fill:#FFD700
+```
+
+<!-- livebook:{"break_markdown":true} -->
+
+### Architecture
+
+* Gatekeeper: Holds world state (Grid), provides locked concurrent access
+* Loop: GenServer that orchestrates queues, manages timers and tasks
+* Queue: Defines when and what to execute (interval + filter function)
+* Pipeline: Sequence of stages (e.g., vegetation → population → movement)
+* Stage: Uses an adapter (Single, Grid, Gatekeeper) to process entities
+* Steps: Pure simulation functions that return changes
+
+### Three Levels of Execution
+
+#### Queue / Loop (Timing & Orchestration)
+
+* **Purpose**: Schedules when to run, filters what to process
+* **Properties**: name, interval, func (filter + pipeline execution)
+* **Implementation**: GenServer manages queue lifecycle
+* **Execution**: Each queue runs its filter → pipeline in supervised task
+* **API**: `Loop.add_queue(loop, queue)`, `Loop.start_sim(loop)`
+* **Example**: Urgent queue runs every 100ms, processes fields where `urgent == true`
+* **State**: Ephemeral (queues can be rebuilt on restart)
+
+#### Pipeline / Stage (Coordination & Execution Strategy)
+
+* **Purpose**: Defines what runs and how (sequential stages)
+* **Properties**: stage sequence, stage adapter, notification config
+* **Execution**: 
+  * Calls `TaskRunner` for parallel execution
+  * Adapters handle data shape (Grid, Single, Gatekeeper)
+  * Gatekeeper adapter locks positions, reads/writes through Gatekeeper
+* **API**: `Pipeline.execute(pipeline, state)`
+* **Example**: Stage 1: grow_crops → Stage 2: consume_food
+* **State**: Static (built once, stored as module functions or config)
+
+#### Simulation / Step (Pure Logic)
+
+* **Purpose**: Implements game/simulation rules
+* **Properties**: Pure functions, no side effects
+* **Signature**: `def step(%Change{data, changes}, opts)`
+* **Returns**: `%Change{changes: %{key: value}}`
+* **API**: `Vegetation.grow_crops(change)`
+* **Example**: Calculate crop growth based on water + soil
+* **Events**: Emit telemetry/pubsub events for significant changes
+
+#### Execute one Tick
+
+<!-- livebook:{"break_markdown":true} -->
+
+```mermaid
+sequenceDiagram
+  participant Timer
+  participant EventLoop as Loop
+  participant Queue
+  participant GK as Gatekeeper / Data
+  participant Pipeline
+  participant Adapter as Stage Adapter
+  participant TaskRunner
+  participant SimStep as Sim Step
+
+  Timer->>EventLoop: Tick
+  EventLoop->>Queue: Execute queue.func()
+  Queue->>GK: Get all positions
+  GK-->>Queue: positions list
+  Queue->>Pipeline: execute with positions
+  Pipeline->>Adapter: run_stage
+  Adapter->>GK: lock positions and read
+  GK-->>Adapter: field data
+  Adapter->>TaskRunner: sim with execute_steps
+  
+  par Parallel Execution
+    TaskRunner->>SimStep: position (0,0)
+    TaskRunner->>SimStep: position (0,1)
+    TaskRunner->>SimStep: position (1,0)
+    TaskRunner->>SimStep: position (1,1)
+  end
+  
+  SimStep-->>TaskRunner: changes vegetation
+  TaskRunner-->>Adapter: all changes collected
+  Adapter->>GK: update_multi with changes
+  GK-->>Adapter: ok
+  Adapter-->>Pipeline: ok with results
+  Pipeline-->>Queue: ok with data
+  Queue-->>EventLoop: ok with data
+```
+
+## Setup
 
 ```elixir
 defmodule MySimulation do
+  @moduledoc """
+  A simple vegetation growth simulation demonstrating Ximula.Sim framework.
+  
+  The simulation:
+  - Creates a 2D torus (wrapping grid) world
+  - Each field has vegetation that grows by 1 each tick
+  - Uses Gatekeeper for locked concurrent access
+  - Demonstrates telemetry and PubSub events
+  """
   alias Phoenix.PubSub
   
   alias Ximula.{Grid, Torus}
@@ -20,6 +140,12 @@ defmodule MySimulation do
   alias Ximula.Sim.{Change, Loop, Pipeline, Queue}
   alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter  
 
+  @doc """
+  Starts the simulation supervision tree.
+  
+  Uses :rest_for_one strategy - if Gatekeeper crashes, everything restarts.
+  If Loop crashes, Gatekeeper (data) survives.
+  """
   def start do
     children = [
       # Data layer - if this crashes, everything downstream is invalid
@@ -95,6 +221,8 @@ defmodule MySimulation do
 end
 
 ```
+
+## Execution
 
 ```elixir
 MySimulation.start()
@@ -188,15 +316,7 @@ Ximula.Sim.Loop.stop_sim(:my_sim_loop)
 ```
 
 ```elixir
-receive do
-  msg -> IO.inspect(msg, label: "Received message")
-after
-  1000 -> IO.puts("No message in 5 seconds")
-end
-```
-
-```elixir
 Ximula.Gatekeeper.Agent.get(:gatekeeper, fn world -> Ximula.Grid.get(world, {1, 1}) end)
 ```
 
-<!-- livebook:{"offset":5262,"stamp":{"token":"XCP.jlB1lA0zfUyxg8p6qcOqwasxhxFWrGAZHzzjjj0rHGNkCExDdFTCroLXTohAGKsxVuBFq2AV4Q_TWV932MACxPvY--rtgBbIaFiHIUonWCotb4qWfh4lMH-E","version":2}} -->
+<!-- livebook:{"offset":9739,"stamp":{"token":"XCP.co9-i-rawp36pFSRUwFKmndQ8I3s1LJL_63UtO2DY8XktKO8V2ztcbFh56TN9J4T2L1P86vLdoeoEvzrvPnt8zYsEEL_8I3IRZkwDfKExSUkIU6n_5-9tZdd","version":2}} -->
