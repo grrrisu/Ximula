@@ -20,7 +20,7 @@ by adding `ximula` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ximula, "~> 0.4.0"}
+    {:ximula, "~> 5.0"}
   ]
 end
 ```
