@@ -222,7 +222,7 @@ end
 
 ```
 
-## Execution
+## Start SimServer
 
 ```elixir
 MySimulation.start()
@@ -240,6 +240,8 @@ Agent.get(:world, & &1)
 queue = MySimulation.create_pipeline() |> MySimulation.create_queue()
 Ximula.Sim.Loop.add_queue(:my_sim_loop, queue)
 ```
+
+## Telemetry
 
 ```elixir
 import Kino.Shorts
@@ -284,6 +286,8 @@ end
       
 ```
 
+## Events
+
 ```elixir
 defmodule EventListener do
 
@@ -309,6 +313,8 @@ end
 EventListener.start()
 ```
 
+## Run Simulation
+
 ```elixir
 Ximula.Sim.Loop.start_sim(:my_sim_loop)
 Process.sleep(5_000)
@@ -319,4 +325,4 @@ Ximula.Sim.Loop.stop_sim(:my_sim_loop)
 Ximula.Gatekeeper.Agent.get(:gatekeeper, fn world -> Ximula.Grid.get(world, {1, 1}) end)
 ```
 
-<!-- livebook:{"offset":9739,"stamp":{"token":"XCP.co9-i-rawp36pFSRUwFKmndQ8I3s1LJL_63UtO2DY8XktKO8V2ztcbFh56TN9J4T2L1P86vLdoeoEvzrvPnt8zYsEEL_8I3IRZkwDfKExSUkIU6n_5-9tZdd","version":2}} -->
+<!-- livebook:{"offset":9789,"stamp":{"token":"XCP.RGZh6kzuDc2F73JPRP4lN5MTohyoGkX4RFNoK3ItYGZIg0NKO__IHTHOXgZOmLIFpeUsWqDQ8lo65OB9gMzPy5IavsgXzoTJfKBIUS2GviLeQW_pqz6qqrYL","version":2}} -->

@@ -1,0 +1,174 @@
+defmodule Ximula.Sim do
+  alias Ximula.Sim.{Pipeline, Queue}
+
+  defmacro __using__(_opts) do
+    quote do
+      import Ximula.Sim
+      Module.register_attribute(__MODULE__, :sim_config, accumulate: false)
+      @before_compile Ximula.Sim
+    end
+  end
+
+  defmacro prefix(do: block) do
+    # TODO remove
+    quote do
+      "prefix" <> unquote(block)
+    end
+  end
+
+  defmacro simulation(do: block) do
+    quote do
+      @sim_config %{pipelines: %{}, queues: []}
+      unquote(block)
+    end
+  end
+
+  defmacro default(default) do
+    quote do
+      @sim_config Map.put_new(@sim_config, :default, unquote(default))
+    end
+  end
+
+  defmacro queue(name, interval \\ 100, do: block) do
+    quote do
+      var!(queue) = %Queue{name: unquote(name), interval: unquote(interval)}
+      Macro.escape(unquote(block))
+      @sim_config Map.update(@sim_config, :queues, [], &[var!(queue) | &1])
+    end
+  end
+
+  defmacro run_pipeline(name, do: block) do
+    quote do
+      pipeline = Map.fetch!(@sim_config[:pipelines], unquote(name))
+
+      var!(current) =
+        Queue.add_pipeline(var!(queue), pipeline, unquote(block))
+    end
+  end
+
+  defmacro pipeline(name, do: block) do
+    quote do
+      name = unquote(name)
+      opts = Keyword.merge(@sim_config[:default], name: name)
+      var!(pipeline) = Pipeline.new_pipeline(opts)
+      unquote(block)
+      @sim_config put_in(@sim_config, [:pipelines, name], var!(pipeline))
+    end
+  end
+
+  defmacro stage(name, adapter, do: block) do
+    quote do
+      opts =
+        Keyword.merge(@sim_config[:default],
+          name: unquote(name),
+          adapter: unquote(adapter) |> stage_adapeter()
+        )
+
+      var!(stage) = unquote(name)
+      var!(pipeline) = Pipeline.add_stage(var!(pipeline), opts)
+      unquote(block)
+    end
+  end
+
+  defmacro read_fun(read_fun) do
+    quote do
+      var!(pipeline) =
+        put_in(
+          var!(pipeline),
+          [:stages, Access.filter(&(&1.name == var!(stage))), :read_fun],
+          unquote(Macro.escape(read_fun))
+        )
+    end
+  end
+
+  defmacro write_fun(write_fun) do
+    quote do
+      var!(pipeline) =
+        put_in(
+          var!(pipeline),
+          [:stages, Access.filter(&(&1.name == var!(stage))), :write_fun],
+          unquote(Macro.escape(write_fun))
+        )
+    end
+  end
+
+  defmacro step(module, function, opts \\ []) do
+    quote do
+      #  warning unused variable
+      var!(stage)
+      opts = Keyword.merge(@sim_config[:default], unquote(opts))
+      var!(pipeline) = Pipeline.add_step(var!(pipeline), unquote(module), unquote(function), opts)
+    end
+  end
+
+  defmacro notify(type) do
+    quote do
+      var!(pipeline) = Map.put(var!(pipeline), :notify, unquote(type))
+    end
+  end
+
+  defmacro notify_all(type) do
+    quote do
+      var!(pipeline) =
+        put_in(
+          var!(pipeline),
+          [:stages, Access.filter(&(&1.name == var!(stage))), :notify, :all],
+          unquote(type)
+        )
+    end
+  end
+
+  defmacro notify_entity(type, filter) do
+    quote do
+      var!(pipeline) =
+        put_in(
+          var!(pipeline),
+          [:stages, Access.filter(&(&1.name == var!(stage))), :notify, :entity],
+          {unquote(type), unquote(Macro.escape(filter))}
+        )
+    end
+  end
+
+  def stage_adapeter(adapter) do
+    case adapter do
+      :gatekeeper -> Ximula.Sim.StageAdapter.Gatekeeper
+      :grid -> Ximula.Sim.StageAdapter.Grid
+      :single -> Ximula.Sim.StageAdapter.Single
+      module when is_atom(module) -> module
+    end
+  end
+
+  defmacro __before_compile__(_env) do
+    quote do
+      def convert_ast(pipeline, path) do
+        update_in(pipeline, [:stages, Access.all()] ++ List.wrap(path), fn fun ->
+          case fun do
+            {type, ast} when is_tuple(ast) ->
+              {type, Code.eval_quoted(ast, [], __ENV__) |> elem(0)}
+
+            ast when is_tuple(ast) ->
+              Code.eval_quoted(ast, [], __ENV__) |> elem(0)
+
+            :none ->
+              :none
+
+            nil ->
+              nil
+          end
+        end)
+      end
+
+      def build_pipelines() do
+        Enum.reduce(@sim_config.pipelines, %{}, fn {name, pipeline}, acc ->
+          pipeline =
+            pipeline
+            |> convert_ast(:read_fun)
+            |> convert_ast(:write_fun)
+            |> convert_ast([:notify, :entity])
+
+          Map.put_new(acc, name, pipeline)
+        end)
+      end
+    end
+  end
+end
