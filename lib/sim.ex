@@ -47,6 +47,17 @@ defmodule Ximula.Sim do
     end
   end
 
+  defmacro run(do: block) do
+    quote do
+      var!(queue) =
+        Map.put(
+          var!(queue),
+          :func,
+          {:run, unquote(Macro.escape(block))}
+        )
+    end
+  end
+
   defmacro pipeline(name, do: block) do
     quote do
       name = unquote(name)
@@ -160,17 +171,28 @@ defmodule Ximula.Sim do
         pipelines = build_pipelines()
 
         Enum.reduce(@sim_config.queues, [], fn queue, acc ->
-          with {:pipeline, pipeline_name, opts, data_fun} <- queue.func,
-               {:ok, pipeline} <- Map.fetch(pipelines, pipeline_name),
-               queue <-
-                 Queue.add_pipeline(queue, pipeline, %{
-                   data: code_eval_quoted(data_fun),
-                   opts: opts
-                 }) do
-            [queue | acc]
-          else
-            _ -> [queue | acc]
-          end
+          queue = convert_block(queue, pipelines)
+          [queue | acc]
+        end)
+      end
+
+      defp convert_block(
+             %Queue{func: {:pipeline, pipeline_name, opts, data_fun}} = queue,
+             pipelines
+           ) do
+        with {:ok, pipeline} <- Map.fetch(pipelines, pipeline_name) do
+          Queue.add_pipeline(queue, pipeline, %{
+            data: code_eval_quoted(data_fun),
+            opts: opts
+          })
+        else
+          _ -> queue
+        end
+      end
+
+      defp convert_block(%Queue{func: {:run, fun}} = queue, _pipelines) do
+        Map.put(queue, :func, fn ->
+          code_eval_quoted(fun)
         end)
       end
 

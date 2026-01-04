@@ -70,10 +70,14 @@ defmodule Ximula.SimTest do
         end
       end
 
-      # queue :urgent, 500 do
-      #   #     # run do
-      #   #     # end
-      # end
+      queue :urgent, 500 do
+        run do
+          TestSimulation.get_data(:gatekeeper)
+          |> Enum.map(fn item ->
+            %{one: item.one + 10}
+          end)
+        end
+      end
     end
   end
 
@@ -162,16 +166,17 @@ defmodule Ximula.SimTest do
                name: :normal,
                func: _,
                interval: 1000
-               #  },
-               #  %Ximula.Sim.Queue{
-               #    name: :urgent,
-               #    func: nil,
-               #    interval: 500
+             },
+             %Ximula.Sim.Queue{
+               name: :urgent,
+               func: _,
+               interval: 500
              }
            ] = queues
 
-    Enum.map(queues, fn queue ->
-      assert {:ok, %{one: _}} = Ximula.Sim.Queue.execute(queue, [])
-    end)
+    assert {:ok, %{one: _one}} = queues |> List.first() |> Ximula.Sim.Queue.execute([])
+
+    assert [%{one: 11}, %{one: 12}, %{one: 13}] ==
+             queues |> List.last() |> Ximula.Sim.Queue.execute([])
   end
 end
