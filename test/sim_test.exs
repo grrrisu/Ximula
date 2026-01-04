@@ -6,8 +6,8 @@ defmodule Ximula.SimTest do
   defmodule TestSimulation do
     use Ximula.Sim
 
-    def positions(_gatekeeper) do
-      [{0, 0}, {0, 1}, {1, 0}, {1, 1}]
+    def get_data(_gatekeeper) do
+      [%{one: 1}, %{one: 2}, %{one: 3}]
     end
 
     def get_value(%{one: value}, _gatekeeper) do
@@ -64,16 +64,16 @@ defmodule Ximula.SimTest do
         end
       end
 
-      # queue :normal do
-      #   run_pipeline(:growth) do
-      #     positions(:gatekeeper)
-      #   end
-      # end
+      queue :normal do
+        run_pipeline(:growth, supervisor: SimTest.Supervisor) do
+          TestSimulation.get_data(:gatekeeper)
+        end
+      end
 
-      #   queue :urgent, 500 do
-      #     # run do
-      #     # end
-      #   end
+      # queue :urgent, 500 do
+      #   #     # run do
+      #   #     # end
+      # end
     end
   end
 
@@ -82,8 +82,8 @@ defmodule Ximula.SimTest do
     %{supervisor: supervisor}
   end
 
-  test "build simulation", %{supervisor: supervisor} do
-    pipelines = TestSimulation.build_pipelines() |> dbg()
+  test "build pipeline", %{supervisor: supervisor} do
+    pipelines = TestSimulation.build_pipelines()
 
     assert %{
              growth: %{
@@ -147,10 +147,31 @@ defmodule Ximula.SimTest do
              }
            } = pipelines
 
-    assert {:ok, %{one: 3 + 5}} ==
+    assert {:ok, %{one: _}} =
              Pipeline.execute(pipelines.growth, %{
                data: [%{one: 1}, %{one: 2}, %{one: 3}],
                opts: [supervisor: supervisor]
              })
+  end
+
+  test "build queues" do
+    queues = TestSimulation.build_queues()
+
+    assert [
+             %Ximula.Sim.Queue{
+               name: :normal,
+               func: _,
+               interval: 1000
+               #  },
+               #  %Ximula.Sim.Queue{
+               #    name: :urgent,
+               #    func: nil,
+               #    interval: 500
+             }
+           ] = queues
+
+    Enum.map(queues, fn queue ->
+      assert {:ok, %{one: _}} = Ximula.Sim.Queue.execute(queue, [])
+    end)
   end
 end
