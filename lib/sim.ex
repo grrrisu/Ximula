@@ -9,13 +9,6 @@ defmodule Ximula.Sim do
     end
   end
 
-  defmacro prefix(do: block) do
-    # TODO remove
-    quote do
-      "prefix" <> unquote(block)
-    end
-  end
-
   defmacro simulation(do: block) do
     quote do
       @sim_config %{pipelines: %{}, queues: []}
@@ -29,20 +22,28 @@ defmodule Ximula.Sim do
     end
   end
 
-  defmacro queue(name, interval \\ 100, do: block) do
+  defmacro queue(name, interval \\ 1_000, do: block) do
     quote do
       var!(queue) = %Queue{name: unquote(name), interval: unquote(interval)}
-      Macro.escape(unquote(block))
+      unquote(block)
       @sim_config Map.update(@sim_config, :queues, [], &[var!(queue) | &1])
     end
   end
 
-  defmacro run_pipeline(name, do: block) do
-    quote do
-      pipeline = Map.fetch!(@sim_config[:pipelines], unquote(name))
+  defmacro run_pipeline(name, opts, do: data_fun) do
+    Keyword.has_key?(opts, :supervisor) ||
+      raise "You must provide a :supervisor option to run_pipeline/3"
 
-      var!(current) =
-        Queue.add_pipeline(var!(queue), pipeline, unquote(block))
+    quote do
+      Map.has_key?(@sim_config[:pipelines], unquote(name)) ||
+        raise "Pipeline #{unquote(name)} not defined"
+
+      var!(queue) =
+        Map.put(
+          var!(queue),
+          :func,
+          {:pipeline, unquote(name), unquote(opts), unquote(Macro.escape(data_fun))}
+        )
     end
   end
 
@@ -140,20 +141,35 @@ defmodule Ximula.Sim do
 
   defmacro __before_compile__(_env) do
     quote do
-      def convert_ast(pipeline, path) do
+      defp convert_ast(pipeline, path) do
         update_in(pipeline, [:stages, Access.all()] ++ List.wrap(path), fn fun ->
           case fun do
-            {type, ast} when is_tuple(ast) ->
-              {type, Code.eval_quoted(ast, [], __ENV__) |> elem(0)}
+            {type, ast} when is_tuple(ast) -> {type, code_eval_quoted(ast)}
+            ast when is_tuple(ast) -> code_eval_quoted(ast)
+            :none -> :none
+            nil -> nil
+          end
+        end)
+      end
 
-            ast when is_tuple(ast) ->
-              Code.eval_quoted(ast, [], __ENV__) |> elem(0)
+      defp code_eval_quoted(ast) do
+        Code.eval_quoted(ast, [], __ENV__) |> elem(0)
+      end
 
-            :none ->
-              :none
+      def build_queues() do
+        pipelines = build_pipelines()
 
-            nil ->
-              nil
+        Enum.reduce(@sim_config.queues, [], fn queue, acc ->
+          with {:pipeline, pipeline_name, opts, data_fun} <- queue.func,
+               {:ok, pipeline} <- Map.fetch(pipelines, pipeline_name),
+               queue <-
+                 Queue.add_pipeline(queue, pipeline, %{
+                   data: code_eval_quoted(data_fun),
+                   opts: opts
+                 }) do
+            [queue | acc]
+          else
+            _ -> [queue | acc]
           end
         end)
       end
