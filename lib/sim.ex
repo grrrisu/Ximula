@@ -1,4 +1,46 @@
 defmodule Ximula.Sim do
+  @moduledoc """
+  Provides macros to define simulations with pipelines and queues
+
+  Example:
+    simulation do
+      default(gatekeeper: :my_world, pubsub: :my_pubsub)
+
+      pipeline :growth do
+        notify(:metric)
+
+        stage :flora_fauna, :gatekeeper do
+          read_fun(&TestSimulation.get_value/2)
+          write_fun(&TestSimulation.put_value/2)
+          step(TestSimulation, :sim_vegetation)
+          step(TestSimulation, :sim_herbivore)
+          step(TestSimulation, :sim_predator)
+        end
+
+        stage :movement, :single do
+          notify_all(:metric)
+          notify_entity(:event_metric, &TestSimulation.notify_filter/1)
+          step(TestSimulation, :sim_movement)
+          step(TestSimulation, :sim_crash, notify: {:event, &TestSimulation.notify_filter/1})
+        end
+      end
+
+      queue :normal do
+        run_pipeline(:growth, supervisor: SimTest.Supervisor) do
+          TestSimulation.get_data(:gatekeeper)
+        end
+      end
+
+      queue :urgent, 500 do
+        run do
+          TestSimulation.get_data(:gatekeeper)
+          |> Enum.map(fn item ->
+            %{one: item.one + 10}
+          end)
+        end
+      end
+    end
+  """
   alias Ximula.Sim.{Pipeline, Queue}
 
   defmacro __using__(_opts) do
@@ -180,13 +222,12 @@ defmodule Ximula.Sim do
              %Queue{func: {:pipeline, pipeline_name, opts, data_fun}} = queue,
              pipelines
            ) do
-        with {:ok, pipeline} <- Map.fetch(pipelines, pipeline_name) do
-          Queue.add_pipeline(queue, pipeline, %{
-            data: code_eval_quoted(data_fun),
-            opts: opts
-          })
-        else
-          _ -> queue
+        case Map.fetch(pipelines, pipeline_name) do
+          {:ok, pipeline} ->
+            Queue.add_pipeline(queue, pipeline, %{data: code_eval_quoted(data_fun), opts: opts})
+
+          _ ->
+            queue
         end
       end
 
