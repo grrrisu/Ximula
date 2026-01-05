@@ -159,6 +159,8 @@ sequenceDiagram
 
 ```elixir
 defmodule MySimulation do
+  use Ximula.Sim
+
   @moduledoc """
   A simple vegetation growth simulation demonstrating Ximula.Sim framework.
   
@@ -172,9 +174,8 @@ defmodule MySimulation do
   
   alias Ximula.{Grid, Torus}
   alias Ximula.Gatekeeper.Agent, as: Gatekeeper
-  alias Ximula.Sim.{Change, Loop, Pipeline, Queue}
-  alias Ximula.Sim.StageAdapter.Gatekeeper, as: GatekeeperAdapter  
-
+  alias Ximula.Sim.{Change, Loop}
+  
   @doc """
   Starts the simulation supervision tree.
   
@@ -188,7 +189,7 @@ defmodule MySimulation do
       {Ximula.Gatekeeper.Agent, name: :gatekeeper, agent: :world},
 
       # Infrastructure - depends on data layer being healthy
-      {PubSub, name: :my_pub_sub},
+      {PubSub, name: :my_pubsub},
       {Task.Supervisor, name: :loop_task_supervisor},
       {Task.Supervisor, name: :task_runner_supervisor},
 
@@ -221,32 +222,44 @@ defmodule MySimulation do
     position
   end
 
-  def create_queue(pipeline) do
-    %Queue{
-      name: :normal,
-      interval: 1_000
-    } 
-    |> Queue.add_pipeline(pipeline, %{
-      data: positions(:gatekeeper), 
-      opts: [tick: 0, supervisor: :task_runner_supervisor]
-    })
+  def notify_filter(%Change{} = change) do
+    Change.get(change, :position) == {0,0}
   end
 
-  def create_pipeline() do
-    Pipeline.new_pipeline(notify: :event_metric, name: "sim_pipeline", pubsub: :my_pub_sub)
-    |> Pipeline.add_stage(
-      adapter: GatekeeperAdapter,
-      gatekeeper: :gatekeeper,
-      name: "field_stage", 
-      notify: %{all: :event_metric, entity: {:event_metric, fn field -> field.position == {0, 0} end}},
-      pubsub: :my_pub_sub,
-      read_fun: &get_field/2,
-      write_fun: &put_field/2
-    )
-    |> Pipeline.add_step(
-      MySimulation, 
-      :sim_vegetation, 
-      notify: {:metric, fn change -> Change.get(change, :position) == {0, 0} end})
+  def notify_filter(field) do
+    field.position == {0,0}
+  end
+
+  simulation do
+    default(gatekeeper: :gatekeeper, pubsub: :my_pubsub)
+    
+    pipeline(:test) do
+      notify(:event_metric)
+
+      stage :flora_fauna, :gatekeeper do
+        notify_all(:event_metric)
+        notify_entity(:event_metric, &MySimulation.notify_filter/1)
+        read_fun(&MySimulation.get_field/2)
+        write_fun(&MySimulation.put_field/2)
+        step(MySimulation, :sim_vegetation, notify: {:event_metric, &MySimulation.notify_filter/1})
+        #step(MySimulation, :sim_herbivore)
+        #step(MySimulation, :sim_predator)
+      end
+
+      #stage :movement, :single do
+      #  notify_all(:metric)
+      #  notify_entity(:event_metric, &MySimulation.notify_filter/1)
+      #  step(MySimulation, :sim_movement)
+      #  step(MySimulation, :sim_crash, notify: {:event, &MySimulation.notify_filter/1})
+      #end
+    end
+
+    queue :normal do
+      run_pipeline(:test, supervisor: :task_runner_supervisor) do
+        MySimulation.positions(:gatekeeper)
+      end
+    end
+
   end
 
   def sim_vegetation(%Change{data: %{vegetation: _vegetation}} = change) do
@@ -272,8 +285,8 @@ Agent.get(:world, & &1)
 ```
 
 ```elixir
-queue = MySimulation.create_pipeline() |> MySimulation.create_queue()
-Ximula.Sim.Loop.add_queue(:my_sim_loop, queue)
+queues = MySimulation.build_queues
+Ximula.Sim.Loop.add_queues(:my_sim_loop, queues)
 ```
 
 ## Telemetry
@@ -305,6 +318,8 @@ end
   :telemetry.attach_many(
     "ximula-metrics-#{:erlang.unique_integer()}",
     [
+      [:ximula, :sim, :queue, :start],
+      [:ximula, :sim, :queue, :stop],
       [:ximula, :sim, :pipeline, :start],
       [:ximula, :sim, :pipeline, :stop],
       [:ximula, :sim, :pipeline, :stage, :start],
@@ -328,9 +343,9 @@ defmodule EventListener do
 
   def start do
     Task.start(fn ->
-      :ok = Phoenix.PubSub.subscribe(:my_pub_sub, "sim:pipeline:sim_pipeline")
-      :ok = Phoenix.PubSub.subscribe(:my_pub_sub, "sim:pipeline:stage:field_stage")
-      :ok = Phoenix.PubSub.subscribe(:my_pub_sub, "sim:pipeline:stage:field_stage:entity")
+      :ok = Phoenix.PubSub.subscribe(:my_pubsub, "sim:pipeline:test")
+      :ok = Phoenix.PubSub.subscribe(:my_pubsub, "sim:pipeline:stage:flora_fauna")
+      :ok = Phoenix.PubSub.subscribe(:my_pubsub, "sim:pipeline:stage:flora_fauna:entity")
       listen_loop()
     end)
   end
@@ -360,4 +375,4 @@ Ximula.Sim.Loop.stop_sim(:my_sim_loop)
 Ximula.Gatekeeper.Agent.get(:gatekeeper, fn world -> Ximula.Grid.get(world, {1, 1}) end)
 ```
 
-<!-- livebook:{"offset":10163,"stamp":{"token":"XCP.WGAfPaRytr4KxWlxjXqQaPJ4eFXVq0BDHgZl5ST4VW5TWXsxZr_JyUWkh4ZuVSVa7rCM-72gzOCbIamCilOxSsdwj_NZfa-lE73ZtwqB7bxx4i4Pv5NBqQIX","version":2}} -->
+<!-- livebook:{"offset":10450,"stamp":{"token":"XCP.BVzn-SVmc4w_y2Y-JiB0o9yzKSBlObAhZsc_lNb6jEm56H9S0iYl0DJWvxamyS0rYEGzUOpXUom0V89L6FKoPNF2EPTYEtEMVTMj6ZQ5Q0ZXa-u3z7BzpdsP","version":2}} -->
