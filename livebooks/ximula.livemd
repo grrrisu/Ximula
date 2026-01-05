@@ -92,11 +92,11 @@ sequenceDiagram
   loop every interval
     activate GS
     GS->>GS: tick
-    create participant Q as Queue Task
-    GS->>Q: Queue.execute
-    Q-->>N: queue started
-
     par each queue
+      create participant Q as Queue Task
+      GS->>Q: Queue.execute
+      Q-->>N: queue started
+    
       activate Q
       Q->>Q: Pipeline.execute
       Q-->>N: pipeline started
@@ -375,4 +375,4 @@ Ximula.Sim.Loop.stop_sim(:my_sim_loop)
 Ximula.Gatekeeper.Agent.get(:gatekeeper, fn world -> Ximula.Grid.get(world, {1, 1}) end)
 ```
 
-<!-- livebook:{"offset":10450,"stamp":{"token":"XCP.BVzn-SVmc4w_y2Y-JiB0o9yzKSBlObAhZsc_lNb6jEm56H9S0iYl0DJWvxamyS0rYEGzUOpXUom0V89L6FKoPNF2EPTYEtEMVTMj6ZQ5Q0ZXa-u3z7BzpdsP","version":2}} -->
+<!-- livebook:{"offset":10460,"stamp":{"token":"XCP.-pm8sse7rAgId1K-9h8vVQbuuN3NtlXoAhgPvklstQLwaJNVdDvfkmpQXvtyMxrwkvfBGIHHwB3KuymGtDC8QVxr3lzQ4fSRN4U800nQXlIWgMGn_svzzJww","version":2}} -->

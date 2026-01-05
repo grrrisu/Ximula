@@ -1,8 +1,20 @@
 defmodule Ximula.Sim do
   @moduledoc """
-  Provides macros to define simulations with pipelines and queues
+  DSL for defining simulations with pipelines and queues.
 
-  Example:
+  ## Architecture
+  ```
+  simulation          Top-level container
+    ├─ default()      Shared configuration
+    ├─ pipeline       Named sequence of stages
+    │   └─ stage      Processing unit with adapter
+    │       └─ step   Pure simulation function
+    └─ queue          Scheduled execution
+        └─ run_*      What to execute
+  ```
+
+  ## Example:
+  ```elixir
     simulation do
       default(gatekeeper: :my_world, pubsub: :my_pubsub)
 
@@ -40,6 +52,7 @@ defmodule Ximula.Sim do
         end
       end
     end
+  ```
   """
   alias Ximula.Sim.{Pipeline, Queue}
 
@@ -47,6 +60,9 @@ defmodule Ximula.Sim do
     quote do
       import Ximula.Sim
       Module.register_attribute(__MODULE__, :sim_config, accumulate: false)
+      Module.register_attribute(__MODULE__, :current_queue, accumulate: false)
+      Module.register_attribute(__MODULE__, :current_pipeline, accumulate: false)
+      Module.register_attribute(__MODULE__, :current_stage, accumulate: false)
       @before_compile Ximula.Sim
     end
   end
@@ -55,9 +71,25 @@ defmodule Ximula.Sim do
     quote do
       @sim_config %{pipelines: %{}, queues: []}
       unquote(block)
+      @current_queue nil
+      @current_pipeline nil
+      @current_stage nil
     end
   end
 
+  @doc """
+  Sets default values that cascade to all pipelines, stages, and steps.
+
+  ## Cascading behavior:
+  - `gatekeeper:` - Available to all stages using :gatekeeper adapter
+  - `pubsub:` - Threaded through to notification system
+  - Custom keys are merged with Keyword.merge/2 at each level
+
+  ## Example:
+      default(gatekeeper: :my_world, pubsub: :my_pubsub, custom: :value)
+
+      # gatekeeper and pubsub are now available in all child elements
+  """
   defmacro default(default) do
     quote do
       @sim_config Map.put_new(@sim_config, :default, unquote(default))
@@ -66,37 +98,35 @@ defmodule Ximula.Sim do
 
   defmacro queue(name, interval \\ 1_000, do: block) do
     quote do
-      var!(queue) = %Queue{name: unquote(name), interval: unquote(interval)}
+      @current_queue %Queue{name: unquote(name), interval: unquote(interval)}
       unquote(block)
-      @sim_config Map.update(@sim_config, :queues, [], &[var!(queue) | &1])
+      @sim_config Map.update(@sim_config, :queues, [], &[@current_queue | &1])
     end
   end
 
   defmacro run_pipeline(name, opts, do: data_fun) do
     Keyword.has_key?(opts, :supervisor) ||
-      raise "You must provide a :supervisor option to run_pipeline/3"
+      raise ArgumentError, "You must provide a :supervisor option to run_pipeline/2"
 
     quote do
       Map.has_key?(@sim_config[:pipelines], unquote(name)) ||
-        raise "Pipeline #{unquote(name)} not defined"
+        raise ArgumentError, "Pipeline #{unquote(name)} not defined"
 
-      var!(queue) =
-        Map.put(
-          var!(queue),
-          :func,
-          {:pipeline, unquote(name), unquote(opts), unquote(Macro.escape(data_fun))}
-        )
+      @current_queue Map.put(
+                       @current_queue,
+                       :func,
+                       {:pipeline, unquote(name), unquote(opts), unquote(Macro.escape(data_fun))}
+                     )
     end
   end
 
   defmacro run(do: block) do
     quote do
-      var!(queue) =
-        Map.put(
-          var!(queue),
-          :func,
-          {:run, unquote(Macro.escape(block))}
-        )
+      @current_queue Map.put(
+                       @current_queue,
+                       :func,
+                       {:run, unquote(Macro.escape(block))}
+                     )
     end
   end
 
@@ -104,9 +134,9 @@ defmodule Ximula.Sim do
     quote do
       name = unquote(name)
       opts = Keyword.merge(@sim_config[:default], name: name)
-      var!(pipeline) = Pipeline.new_pipeline(opts)
+      @current_pipeline Pipeline.new_pipeline(opts)
       unquote(block)
-      @sim_config put_in(@sim_config, [:pipelines, name], var!(pipeline))
+      @sim_config put_in(@sim_config, [:pipelines, name], @current_pipeline)
     end
   end
 
@@ -115,75 +145,80 @@ defmodule Ximula.Sim do
       opts =
         Keyword.merge(@sim_config[:default],
           name: unquote(name),
-          adapter: unquote(adapter) |> stage_adapeter()
+          adapter: unquote(adapter) |> stage_adapter()
         )
 
-      var!(stage) = unquote(name)
-      var!(pipeline) = Pipeline.add_stage(var!(pipeline), opts)
+      @current_stage unquote(name)
+      @current_pipeline Pipeline.add_stage(@current_pipeline, opts)
       unquote(block)
     end
   end
 
   defmacro read_fun(read_fun) do
     quote do
-      var!(pipeline) =
-        put_in(
-          var!(pipeline),
-          [:stages, Access.filter(&(&1.name == var!(stage))), :read_fun],
-          unquote(Macro.escape(read_fun))
-        )
+      @current_pipeline put_in(
+                          @current_pipeline,
+                          [:stages, Access.filter(&(&1.name == @current_stage)), :read_fun],
+                          unquote(Macro.escape(read_fun))
+                        )
     end
   end
 
   defmacro write_fun(write_fun) do
     quote do
-      var!(pipeline) =
-        put_in(
-          var!(pipeline),
-          [:stages, Access.filter(&(&1.name == var!(stage))), :write_fun],
-          unquote(Macro.escape(write_fun))
-        )
+      @current_pipeline put_in(
+                          @current_pipeline,
+                          [:stages, Access.filter(&(&1.name == @current_stage)), :write_fun],
+                          unquote(Macro.escape(write_fun))
+                        )
     end
   end
 
   defmacro step(module, function, opts \\ []) do
     quote do
-      #  warning unused variable
-      var!(stage)
       opts = Keyword.merge(@sim_config[:default], unquote(opts))
-      var!(pipeline) = Pipeline.add_step(var!(pipeline), unquote(module), unquote(function), opts)
+
+      @current_pipeline Pipeline.add_step(
+                          @current_pipeline,
+                          unquote(module),
+                          unquote(function),
+                          opts
+                        )
     end
   end
 
   defmacro notify(type) do
     quote do
-      var!(pipeline) = Map.put(var!(pipeline), :notify, unquote(type))
+      @current_pipeline Map.put(@current_pipeline, :notify, unquote(type))
     end
   end
 
   defmacro notify_all(type) do
     quote do
-      var!(pipeline) =
-        put_in(
-          var!(pipeline),
-          [:stages, Access.filter(&(&1.name == var!(stage))), :notify, :all],
-          unquote(type)
-        )
+      @current_pipeline put_in(
+                          @current_pipeline,
+                          [:stages, Access.filter(&(&1.name == @current_stage)), :notify, :all],
+                          unquote(type)
+                        )
     end
   end
 
   defmacro notify_entity(type, filter) do
     quote do
-      var!(pipeline) =
-        put_in(
-          var!(pipeline),
-          [:stages, Access.filter(&(&1.name == var!(stage))), :notify, :entity],
-          {unquote(type), unquote(Macro.escape(filter))}
-        )
+      @current_pipeline put_in(
+                          @current_pipeline,
+                          [
+                            :stages,
+                            Access.filter(&(&1.name == @current_stage)),
+                            :notify,
+                            :entity
+                          ],
+                          {unquote(type), unquote(Macro.escape(filter))}
+                        )
     end
   end
 
-  def stage_adapeter(adapter) do
+  def stage_adapter(adapter) do
     case adapter do
       :gatekeeper -> Ximula.Sim.StageAdapter.Gatekeeper
       :grid -> Ximula.Sim.StageAdapter.Grid
@@ -209,6 +244,16 @@ defmodule Ximula.Sim do
         Code.eval_quoted(ast, [], __ENV__) |> elem(0)
       end
 
+      @doc """
+      Returns all queues defined in the simulation block.
+
+      Queues are returned as a list of `%Queue{}` structs with their functions
+      converted from AST to executable code.
+
+      ## Example
+          queues = MySimulation.build_queues()
+          Enum.each(queues, &Loop.add_queue(:my_loop, &1))
+      """
       def build_queues() do
         pipelines = build_pipelines()
 
@@ -237,6 +282,17 @@ defmodule Ximula.Sim do
         end)
       end
 
+      @doc """
+      Returns all pipelines defined in the simulation block.
+
+      Pipelines are returned as a map with pipeline names as keys.
+      All function captures (read_fun, write_fun, filters) are converted
+      from AST to executable functions.
+
+      ## Example
+          pipelines = MySimulation.build_pipelines()
+          Pipeline.execute(pipelines.growth, data)
+      """
       def build_pipelines() do
         Enum.reduce(@sim_config.pipelines, %{}, fn {name, pipeline}, acc ->
           pipeline =
