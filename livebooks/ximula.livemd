@@ -79,45 +79,80 @@ graph TB
 * **Example**: Calculate crop growth based on water + soil
 * **Events**: Emit telemetry/pubsub events for significant changes
 
-#### Execute one Tick
+#### Task Squence
 
 <!-- livebook:{"break_markdown":true} -->
 
 ```mermaid
 sequenceDiagram
-  participant Timer
-  participant EventLoop as Loop
-  participant Queue
-  participant GK as Gatekeeper / Data
-  participant Pipeline
-  participant Adapter as Stage Adapter
-  participant TaskRunner
-  participant SimStep as Sim Step
+  autonumber
+  participant GS as Loop<br>GenServer
+  
+  
+  loop every interval
+    activate GS
+    GS->>GS: tick
+    create participant Q as Queue Task
+    GS->>Q: Queue.execute
+    Q-->>N: queue started
 
-  Timer->>EventLoop: Tick
-  EventLoop->>Queue: Execute queue.func()
-  Queue->>GK: Get all positions
-  GK-->>Queue: positions list
-  Queue->>Pipeline: execute with positions
-  Pipeline->>Adapter: run_stage
-  Adapter->>GK: lock positions and read
-  GK-->>Adapter: field data
-  Adapter->>TaskRunner: sim with execute_steps
-  
-  par Parallel Execution
-    TaskRunner->>SimStep: position (0,0)
-    TaskRunner->>SimStep: position (0,1)
-    TaskRunner->>SimStep: position (1,0)
-    TaskRunner->>SimStep: position (1,1)
+    par each queue
+      activate Q
+      Q->>Q: Pipeline.execute
+      Q-->>N: pipeline started
+    
+      activate Q
+      Q->>Q: execute_stage
+      Q-->>N: stage started
+      
+      par each entity
+        activate Q
+        create participant S as Step Task
+        Q->>S: execute_steps
+        S-->>N: entity started
+        
+        activate S
+        S->>A: get_data
+
+        activate S
+        S-->>N: step started
+        S->>S: execute_step
+        S-->>N: step completed
+        deactivate S
+        
+        activate S
+        S->>S: execute_step
+        deactivate S
+      
+        activate S
+        S->>S: execute_step
+        deactivate S
+        
+        S->>A: put_data
+        deactivate S
+
+        S-->>N: entity completed
+        destroy S
+        S-->>Q: {:ok, aggregate}
+        deactivate Q
+      end
+
+      Q-->>N: stage completed
+      deactivate Q
+      Q-->>N: pipeline completed
+    end
+    
+    deactivate Q
+
+    Q-->>N: queue completed
+    destroy Q
+    Q-->>GS: handle_info({ref, result}, state)  
+    deactivate GS
   end
+  N-->>GS: handle_telemetry(queue_completed)
   
-  SimStep-->>TaskRunner: changes vegetation
-  TaskRunner-->>Adapter: all changes collected
-  Adapter->>GK: update_multi with changes
-  GK-->>Adapter: ok
-  Adapter-->>Pipeline: ok with results
-  Pipeline-->>Queue: ok with data
-  Queue-->>EventLoop: ok with data
+  participant N as PubSub<br>Telemetry
+  participant A as Gatekeeper<br>Data Agent
 ```
 
 ## Setup
@@ -325,4 +360,4 @@ Ximula.Sim.Loop.stop_sim(:my_sim_loop)
 Ximula.Gatekeeper.Agent.get(:gatekeeper, fn world -> Ximula.Grid.get(world, {1, 1}) end)
 ```
 
-<!-- livebook:{"offset":9789,"stamp":{"token":"XCP.RGZh6kzuDc2F73JPRP4lN5MTohyoGkX4RFNoK3ItYGZIg0NKO__IHTHOXgZOmLIFpeUsWqDQ8lo65OB9gMzPy5IavsgXzoTJfKBIUS2GviLeQW_pqz6qqrYL","version":2}} -->
+<!-- livebook:{"offset":10163,"stamp":{"token":"XCP.WGAfPaRytr4KxWlxjXqQaPJ4eFXVq0BDHgZl5ST4VW5TWXsxZr_JyUWkh4ZuVSVa7rCM-72gzOCbIamCilOxSsdwj_NZfa-lE73ZtwqB7bxx4i4Pv5NBqQIX","version":2}} -->
