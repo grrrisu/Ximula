@@ -28,8 +28,19 @@ defmodule Ximula.Sim.Loop do
     GenServer.call(server, :get_queues)
   end
 
+  def add_queue(server \\ __MODULE__, queue)
+
+  def add_queue(server, [%Queue{} | _] = queues) do
+    Enum.take_while(queues, fn queue ->
+      case add_queue(server, queue) do
+        :ok -> :ok
+        {:error, _msg} -> false
+      end
+    end)
+  end
+
   # adds or replaces a queue with the same name
-  def add_queue(server \\ __MODULE__, %Queue{} = queue) do
+  def add_queue(server, %Queue{} = queue) do
     GenServer.call(server, {:add_queue, queue})
   end
 
