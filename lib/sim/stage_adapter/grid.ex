@@ -31,10 +31,12 @@ defmodule Ximula.Sim.StageAdapter.Grid do
   - Single entity → use `Single`
   - Non-spatial entities → use custom adapter or `Single`
   """
+  @behaviour Ximula.Sim.StageAdapter
 
   alias Ximula.Grid
   alias Ximula.Sim.Pipeline
 
+  @impl true
   def run_stage(stage, %{data: grid, opts: opts}) do
     grid
     |> get_fields()

@@ -48,9 +48,11 @@ defmodule Ximula.Sim.StageAdapter.Gatekeeper do
   - Parallel processing within locked set
   - Use fine-grained keys to minimize contention
   """
+  @behaviour Ximula.Sim.StageAdapter
 
   alias Ximula.Sim.Pipeline
 
+  @impl true
   def run_stage(stage, %{data: data, opts: opts}) do
     data
     |> Pipeline.run_tasks({__MODULE__, :run_entity}, stage, opts)
