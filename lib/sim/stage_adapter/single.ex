@@ -25,8 +25,11 @@ defmodule Ximula.Sim.StageAdapter.Single do
   - Multiple entities that can run in parallel → use `Grid`
   - Cross-entity operations that need locking → use `Gatekeeper`
   """
+  @behaviour Ximula.Sim.StageAdapter
+
   alias Ximula.Sim.Pipeline
 
+  @impl true
   def run_stage(stage, %{data: data, opts: opts}) do
     data
     |> Pipeline.run_tasks({Pipeline, :execute_steps}, stage, opts)
