@@ -368,7 +368,7 @@ end
 # write_fun: Write and RELEASE lock
 def write_field(%{position: position} = field, gatekeeper) do
   # Gatekeeper.update writes and releases lock
-  Gatekeeper.update(gatekeeper, position, field, fn _data, context ->
+  Gatekeeper.update(gatekeeper, position, fn _data, context ->
     Agent.update(context.agent, &Grid.put(&1, position, field))
   end)
 end
@@ -1101,7 +1101,7 @@ defmodule CropSimulation do
   end
   
   def write_field(%{position: position} = field, gatekeeper) do
-    Gatekeeper.update(gatekeeper, position, field, fn _data, context ->
+    Gatekeeper.update(gatekeeper, position, fn _data, context ->
       Agent.update(context.agent, &Grid.put(&1, position, 
         Map.delete(field, :position)))
     end)
@@ -1248,7 +1248,7 @@ end
 # Remove before persisting
 def write_field(%{position: position} = field, gatekeeper) do
   clean_field = Map.delete(field, :position)
-  Gatekeeper.update(gatekeeper, position, clean_field, &save_data/3)
+  Gatekeeper.update(gatekeeper, position, &save_data/3)
 end
 ```
 
@@ -1328,7 +1328,7 @@ TaskRunner.sim(
 ```elixir
 # ❌ Wrong - calling update without lock
 def write_field(field, gatekeeper) do
-  Gatekeeper.update(gatekeeper, :key, field, fn ... end)
+  Gatekeeper.update(gatekeeper, :key, fn ... end)
 end
 
 # ✅ Correct - lock acquired in read_fun, held until update
@@ -1337,7 +1337,7 @@ def read_field(key, gatekeeper) do
 end
 
 def write_field(field, gatekeeper) do
-  Gatekeeper.update(gatekeeper, :key, field, fn ... end)  # Releases
+  Gatekeeper.update(gatekeeper, :key, fn ... end)  # Releases
 end
 ```
 

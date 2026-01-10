@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1
+
+- Breaking Change: Removed argument `value`from `Gatekeeper.update(server, key, value, fn {key, value} -> .. end)` as it is not used in Gatekeeper itself. Has now become: `Gatekeeper.update(server, key, fn _ignore -> .. end)`
+
 ## 0.5.0
 
 - rename Ximula.Simulator to Ximula.Sim.TaskRunner

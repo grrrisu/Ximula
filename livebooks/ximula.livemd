@@ -218,7 +218,7 @@ defmodule MySimulation do
   end
 
   def put_field(%{position: position, vegetation: vegetation}, gatekeeper) do
-    :ok = Gatekeeper.update(gatekeeper, position, vegetation, &Grid.put(&1, position, %{vegetation: vegetation}))
+    :ok = Gatekeeper.update(gatekeeper, position, &Grid.put(&1, position, %{vegetation: vegetation}))
     position
   end
 

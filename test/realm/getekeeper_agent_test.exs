@@ -31,7 +31,7 @@ defmodule Ximula.Gatekeeper.AgentTest do
   end
 
   def update(pid, key, value) do
-    Gatekeeper.update(pid, key, value, fn grid ->
+    Gatekeeper.update(pid, key, fn grid ->
       Grid.put(grid, key, value)
     end)
   end
