@@ -56,7 +56,7 @@ defmodule Ximula.SimTest do
           step(TestSimulation, :sim_predator)
         end
 
-        stage :movement, :single do
+        stage :movement, :single, more: :options do
           notify_all(:metric)
           notify_entity(:event_metric, &TestSimulation.notify_filter/1)
           step(TestSimulation, :sim_movement)
@@ -132,6 +132,7 @@ defmodule Ximula.SimTest do
                    pubsub: :my_pubsub,
                    adapter: Ximula.Sim.StageAdapter.Single,
                    on_error: :raise,
+                   more: :options,
                    steps: [
                      %{
                        function: :sim_movement,
