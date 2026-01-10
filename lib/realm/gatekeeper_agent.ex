@@ -50,7 +50,7 @@ defmodule Ximula.Gatekeeper.Agent do
       :ok = Ximula.Gatekeeper.Agent.request_lock(gatekeeper, :my_key)
 
       # Then update
-      :ok = Ximula.Gatekeeper.Agent.update(gatekeeper, :my_key, "new_value", fn state ->
+      :ok = Ximula.Gatekeeper.Agent.update(gatekeeper, :my_key, fn state ->
         Map.put(state, :my_key, "new_value")
       end)
 
@@ -162,9 +162,9 @@ defmodule Ximula.Gatekeeper.Agent do
     Gatekeeper.lock(server, keys, fn _key -> Agent.get(context.agent, &fun.(&1)) end)
   end
 
-  # Ximula.Gatekeeper.Agent.update(agent, :a, 42, fn state -> Map.update(state, :a, 42) end)
-  def update(server \\ __MODULE__, key, value, fun) do
-    Gatekeeper.update(server, key, value, fn _key_value, context ->
+  # Ximula.Gatekeeper.Agent.update(agent, :a, fn state -> Map.update(state, :a, 42) end)
+  def update(server \\ __MODULE__, key, fun) do
+    Gatekeeper.update(server, key, fn _key_, context ->
       Agent.update(context.agent, &fun.(&1))
     end)
   end

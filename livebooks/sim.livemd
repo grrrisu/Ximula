@@ -62,7 +62,7 @@ defmodule Sim.Data do
   end
 
   def update_field(pid, position, field) do
-    Gatekeeper.update(pid, position, field, &Grid.put(&1, position, field))
+    Gatekeeper.update(pid, position, &Grid.put(&1, position, field))
   end
 end
 ```

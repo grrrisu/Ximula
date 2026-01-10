@@ -26,7 +26,7 @@ defmodule Ximula.Gatekeeper do
       result = calculate(value)
 
       # Write the value and release the lock when done
-      :ok = Ximula.Gatekeeper.update(pid, {:my_key, result}, fn {key, value} -> write(key, value) end)
+      :ok = Ximula.Gatekeeper.update(pid, :my_key, fn {key, _ignore} -> write(key, value) end)
 
   ## Multi-key Operations
 
@@ -101,8 +101,8 @@ defmodule Ximula.Gatekeeper do
     GenServer.call(server, {:update, data, fun})
   end
 
-  def update(server \\ __MODULE__, key, value, fun) do
-    update_multi(server, [{key, value}], fun)
+  def update(server \\ __MODULE__, key, fun) do
+    update_multi(server, [{key, :value_ignored}], fun)
   end
 
   def release(server \\ __MODULE__, keys)

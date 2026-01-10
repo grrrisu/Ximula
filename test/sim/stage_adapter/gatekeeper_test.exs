@@ -15,7 +15,7 @@ defmodule Ximula.Sim.StageAdapter.GatekeeperTest do
   end
 
   def put_field(%{position: position, field: field}, gatekeeper) do
-    :ok = Gatekeeper.update(gatekeeper, position, field, &Grid.put(&1, position, field))
+    :ok = Gatekeeper.update(gatekeeper, position, &Grid.put(&1, position, field))
     position
   end
 
