@@ -136,8 +136,11 @@ defmodule Ximula.Sim.Pipeline do
       Enum.empty?(ok) ->
         {:error,
          failed
-         |> Enum.map(fn {_data, {reason, stacktrace}} ->
-           Exception.format_banner(:exit, reason, stacktrace)
+         |> Enum.map(fn {_data, error} ->
+           case error do
+             {reason, stacktrace} -> Exception.format_banner(:exit, reason, stacktrace)
+             :shutdown -> :shutdown
+           end
          end)}
 
       Enum.any?(ok) ->

@@ -110,7 +110,13 @@ defmodule Ximula.Sim.Change do
     Enum.map(keys, &Access.key(&1, %{}))
   end
 
-  defp nested_keys(map, parent \\ [], list \\ []) do
+  defp nested_keys(map, parent \\ [], list \\ [])
+
+  defp nested_keys(%_{} = struct, parent, list) do
+    struct |> Map.from_struct() |> nested_keys(parent, list)
+  end
+
+  defp nested_keys(map, parent, list) do
     Enum.reduce(map, list, fn {key, value}, list ->
       case value do
         %{} -> nested_keys(value, parent ++ [key], list)

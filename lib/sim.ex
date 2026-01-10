@@ -140,10 +140,11 @@ defmodule Ximula.Sim do
     end
   end
 
-  defmacro stage(name, adapter, do: block) do
+  defmacro stage(name, adapter, opts \\ [], do: block) do
     quote do
       opts =
-        Keyword.merge(@sim_config[:default],
+        Keyword.merge(@sim_config[:default], unquote(opts))
+        |> Keyword.merge(
           name: unquote(name),
           adapter: unquote(adapter) |> stage_adapter()
         )
