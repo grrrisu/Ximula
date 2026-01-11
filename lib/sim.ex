@@ -120,6 +120,22 @@ defmodule Ximula.Sim do
     end
   end
 
+  defmacro run_pipeline(name, opts) do
+    Keyword.has_key?(opts, :supervisor) ||
+      raise ArgumentError, "You must provide a :supervisor option to run_pipeline/2"
+
+    quote do
+      Map.has_key?(@sim_config[:pipelines], unquote(name)) ||
+        raise ArgumentError, "Pipeline #{unquote(name)} not defined"
+
+      @current_queue Map.put(
+                       @current_queue,
+                       :func,
+                       {:pipeline, unquote(name), unquote(opts), nil}
+                     )
+    end
+  end
+
   defmacro run(do: block) do
     quote do
       @current_queue Map.put(

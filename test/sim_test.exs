@@ -70,6 +70,11 @@ defmodule Ximula.SimTest do
         end
       end
 
+      queue :slow do
+        # gets data in stage
+        run_pipeline(:growth, supervisor: SimTest.Supervisor)
+      end
+
       queue :urgent, 500 do
         run do
           TestSimulation.get_data(:gatekeeper)
@@ -169,6 +174,11 @@ defmodule Ximula.SimTest do
                interval: 1000
              },
              %Ximula.Sim.Queue{
+               name: :slow,
+               func: _,
+               interval: 1000
+             },
+             %Ximula.Sim.Queue{
                name: :urgent,
                func: _,
                interval: 500
@@ -176,6 +186,7 @@ defmodule Ximula.SimTest do
            ] = queues
 
     assert {:ok, %{one: _one}} = queues |> List.first() |> Ximula.Sim.Queue.execute([])
+    # assert {:ok, %{one: _one}} = queues |> Enum.at(1) |> Ximula.Sim.Queue.execute([])
 
     assert [%{one: 11}, %{one: 12}, %{one: 13}] ==
              queues |> List.last() |> Ximula.Sim.Queue.execute([])
