@@ -76,16 +76,17 @@ defmodule Ximula.Grid do
     map_size(grid[0])
   end
 
-  # return the grid as a list
+  # returns the values of the grid as a list
   # note: the order of the values may be in random order
   def values(grid) do
     map(grid, fn _x, _y, value -> value end)
   end
 
-  # return the grid as a list
+  # returns the positions of the grid as list
   # note: the order of the values may be in random order
   def positions(grid) do
-    map(grid, fn x, y, _value -> {x, y} end)
+    Enum.map(0..(width(grid) - 1), fn x -> Enum.map(0..(height(grid) - 1), fn y -> {x, y} end) end)
+    |> List.flatten()
   end
 
   # return the grid as a list
