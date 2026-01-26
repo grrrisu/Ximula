@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2
+
+- Grid get positions
+- DSL `run_pipeline` block is now optional
+- Wrapping data in a `%Change{}` and afterwards reducing it, is now done in stage not th pipeline anymore.
+- Change can now check for changed function with `get_if` and then return either the value or `:no_change`
+
 ## 0.5.1
 
 - Breaking Change: Removed argument `value`from `Gatekeeper.update(server, key, value, fn {key, value} -> .. end)` as it is not used in Gatekeeper itself. Has now become: `Gatekeeper.update(server, key, fn _ignore -> .. end)`
