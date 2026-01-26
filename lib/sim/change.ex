@@ -72,13 +72,38 @@ defmodule Ximula.Sim.Change do
 
   alias Ximula.Sim.Change
 
-  def get(%Change{data: data, changes: changes}, key) do
-    key = List.wrap(key)
+  def get(%Change{} = change, key) do
+    {origin, delta} = get_origin_delta(change, key)
+    get_new_value(origin, delta)
+  end
 
-    case get_in(data, key) do
-      nil -> get_in(changes, key)
-      origin when is_number(origin) -> origin + (get_in(changes, key) || 0)
-      origin -> get_in(changes, key) || origin
+  def get_if_delta(%Change{} = change, key, fun) do
+    {origin, delta} = get_origin_delta(change, key)
+    if fun.(delta), do: get_new_value(origin, delta), else: :no_change
+  end
+
+  def get_if_origin_new(%Change{} = change, key, fun) do
+    {origin, delta} = get_origin_delta(change, key)
+    new_value = get_new_value(origin, delta)
+    if fun.(origin, new_value), do: new_value, else: :no_change
+  end
+
+  def get_if_integer_threshold(%Change{} = change, key) do
+    {origin, delta} = get_origin_delta(change, key)
+    new_value = get_new_value(origin, delta)
+    if round(origin) != round(new_value), do: new_value, else: :no_change
+  end
+
+  defp get_origin_delta(%Change{data: data, changes: changes}, key) do
+    key = List.wrap(key)
+    {get_in(data, key), get_in(changes, key)}
+  end
+
+  defp get_new_value(origin, delta) do
+    case origin do
+      nil -> delta
+      origin when is_number(origin) -> origin + (delta || 0)
+      origin -> delta || origin
     end
   end
 
