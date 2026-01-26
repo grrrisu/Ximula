@@ -18,6 +18,28 @@ defmodule Ximula.Sim.ChangeTest do
     assert Change.get(change, :foo) == {"bar", "baz"}
   end
 
+  test "get if delta big enough" do
+    change = %Change{data: %{counter: 5}} |> Change.change_by(:counter, 0.1)
+    assert Change.get(change, :counter) == 5.1
+    assert Change.get_if_delta(change, :counter, &(&1 >= 1.0)) == :no_change
+  end
+
+  test "get if orgin and new value big enough" do
+    change = %Change{data: %{counter: 4.5}} |> Change.change_by(:counter, 0.1)
+    assert Change.get(change, :counter) == 4.6
+    assert Change.get_if_origin_new(change, :counter, &(ceil(&1) != ceil(&2))) == :no_change
+  end
+
+  test "get if rounded integer threshold reached" do
+    change = %Change{data: %{counter: 4.5}} |> Change.change_by(:counter, 0.1)
+    assert Change.get(change, :counter) == 4.6
+    assert Change.get_if_integer_threshold(change, :counter) == :no_change
+
+    change = %Change{data: %{counter: 4.4}} |> Change.change_by(:counter, 0.1)
+    assert Change.get(change, :counter) == 4.5
+    assert Change.get_if_integer_threshold(change, :counter) == 4.5
+  end
+
   test "change by value" do
     change = %Change{data: %{counter: 5}}
     change = Change.change_by(change, :counter, 1)
