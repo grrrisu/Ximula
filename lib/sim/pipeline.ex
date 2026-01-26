@@ -114,14 +114,15 @@ defmodule Ximula.Sim.Pipeline do
     |> handle_sim_results()
   end
 
+  def execute_and_reduce_steps(data, stage) do
+    %Change{data: data}
+    |> execute_steps(stage)
+    |> Change.reduce()
+  end
+
   def execute_steps(data, stage) do
     Notify.measure_entity_stage(stage, data, fn ->
-      Enum.reduce(
-        stage.steps,
-        %Change{data: data},
-        &execute_step/2
-      )
-      |> Change.reduce()
+      Enum.reduce(stage.steps, data, &execute_step/2)
     end)
   end
 
@@ -133,7 +134,7 @@ defmodule Ximula.Sim.Pipeline do
 
   def handle_sim_results(%{ok: ok, exit: failed}) do
     cond do
-      Enum.empty?(ok) ->
+      Enum.any?(failed) ->
         {:error,
          failed
          |> Enum.map(fn {_data, error} ->
@@ -143,7 +144,7 @@ defmodule Ximula.Sim.Pipeline do
            end
          end)}
 
-      Enum.any?(ok) ->
+      true ->
         {:ok, ok}
     end
   end

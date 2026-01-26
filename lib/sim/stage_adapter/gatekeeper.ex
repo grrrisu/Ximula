@@ -50,7 +50,7 @@ defmodule Ximula.Sim.StageAdapter.Gatekeeper do
   """
   @behaviour Ximula.Sim.StageAdapter
 
-  alias Ximula.Sim.Pipeline
+  alias Ximula.Sim.{Change, Pipeline}
 
   @impl true
   def run_stage(stage, %{data: data, opts: opts}) do
@@ -64,7 +64,9 @@ defmodule Ximula.Sim.StageAdapter.Gatekeeper do
       ) do
     key
     |> read_fun.(gatekeeper)
+    |> then(&%Change{data: &1})
     |> Pipeline.execute_steps(stage)
+    |> Change.reduce()
     |> write_fun.(gatekeeper)
   end
 end

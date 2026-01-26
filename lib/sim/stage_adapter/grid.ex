@@ -40,7 +40,7 @@ defmodule Ximula.Sim.StageAdapter.Grid do
   def run_stage(stage, %{data: grid, opts: opts}) do
     grid
     |> get_fields()
-    |> Pipeline.run_tasks({Pipeline, :execute_steps}, stage, opts)
+    |> Pipeline.run_tasks({Pipeline, :execute_and_reduce_steps}, stage, opts)
     |> reduce_grid(grid)
   end
 
