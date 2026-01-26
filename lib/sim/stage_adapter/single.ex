@@ -32,13 +32,13 @@ defmodule Ximula.Sim.StageAdapter.Single do
   @impl true
   def run_stage(stage, %{data: data, opts: opts}) do
     data
-    |> Pipeline.run_tasks({Pipeline, :execute_steps}, stage, opts)
-    |> reduce_data()
+    |> Pipeline.run_tasks({Pipeline, :execute_and_reduce_steps}, stage, opts)
+    |> result()
   end
 
-  def reduce_data({:error, reasons}), do: {:error, reasons}
+  def result({:error, reasons}), do: {:error, reasons}
 
-  def reduce_data({:ok, results}) do
+  def result({:ok, results}) do
     {:ok, List.first(results)}
   end
 end

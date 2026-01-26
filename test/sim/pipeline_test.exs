@@ -284,7 +284,10 @@ defmodule Ximula.Sim.PipelineTest do
                        }}
 
       assert_received {:entity_stage_completed,
-                       %{result: %{counter: 11}, stage_name: "test_stage"}}
+                       %{
+                         result: %Change{data: %{counter: 10}, changes: %{counter: 1}},
+                         stage_name: "test_stage"
+                       }}
 
       assert_received {:step_completed,
                        %{
